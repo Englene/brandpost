@@ -4,6 +4,8 @@ API-mention av firmasida."""
 
 from __future__ import annotations
 
+import pytest
+
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -267,3 +269,50 @@ def test_oppskalering_virker_fortsatt_naar_kilden_er_liten():
     from brandpost import render
     liten = Image.new("RGBA", (512, 640), (20, 160, 60, 255))
     assert render._cover_resize(liten, (1080, 1350)).size == (1080, 1350)
+
+
+# ── modell-adapteren (den eneste helt nye modulen i repoet) ──
+
+def test_oppsettsfeil_provar_ikke_fallback(monkeypatch):
+    """En manglende nøkkel feiler like hardt på modell to. Å prøve igjen gir bare en
+    ekstra forvirrende feilmelding oppå den ene som faktisk betyr noe."""
+    from brandpost import model
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("BRANDPOST_MODEL_BACKEND", "api")
+    forsok = []
+
+    def teller(*a, **k):
+        forsok.append(1)
+        raise model.OppsettFeil("nøkkel mangler")
+    monkeypatch.setattr(model, "_call_api", teller)
+
+    with pytest.raises(model.OppsettFeil):
+        model.structured_call("s", "u", {"type": "object"}, label="test")
+    assert len(forsok) == 1, "skal gi opp med én gang, ikke gå videre i stigen"
+
+
+def test_ekte_modellfeil_provar_fallback(monkeypatch):
+    from brandpost import model
+    monkeypatch.setenv("BRANDPOST_MODEL_BACKEND", "api")
+    monkeypatch.setenv("BRANDPOST_MODEL", "claude-sonnet-5")
+    monkeypatch.setenv("BRANDPOST_MODEL_FALLBACK", "claude-haiku-4-5-20251001")
+    sett = []
+
+    def flakete(system, user, schema, m, timeout):
+        sett.append(m)
+        if len(sett) == 1:
+            raise model.ModelError("overbelastet")
+        return {"structured_output": {"ok": True}, "_model": m}
+    monkeypatch.setattr(model, "_call_api", flakete)
+
+    svar = model.structured_call("s", "u", {"type": "object"}, label="test")
+    assert svar["structured_output"] == {"ok": True}
+    assert len(sett) == 2, "skal ha prøvd fallbacken"
+
+
+def test_fallback_er_aldri_samme_familie_som_primaeren(monkeypatch):
+    """Er begge fra samme familie, har en overbelastning ingen fluktvei."""
+    from brandpost import model
+    monkeypatch.delenv("BRANDPOST_MODEL", raising=False)
+    monkeypatch.delenv("BRANDPOST_MODEL_FALLBACK", raising=False)
+    assert model._family(model.model_name()) != model._family(model.fallback_name())

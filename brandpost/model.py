@@ -38,6 +38,14 @@ class QuotaExhausted(ModelError):
     """Konto-vid grense: ingen modell svarer nå, så fallback er meningsløst."""
 
 
+class OppsettFeil(ModelError):
+    """Noe mangler i oppsettet: nøkkel, pakke, binærfil.
+
+    Egen type fordi den skal HOPPE OVER fallback-stigen. En manglende nøkkel feiler
+    like hardt på modell to, og å prøve igjen gir bare en forvirrende ekstra
+    feilmelding oppå den ene som betyr noe."""
+
+
 def backend() -> str:
     b = (os.environ.get("BRANDPOST_MODEL_BACKEND") or "api").strip().lower()
     return "cli" if b == "cli" else "api"
@@ -69,11 +77,11 @@ def _call_api(system_prompt: str, user_message: str, schema: dict,
     try:
         import anthropic
     except ImportError as e:  # noqa: BLE001
-        raise ModelError(
+        raise OppsettFeil(
             "pakken `anthropic` mangler. Installer den, eller sett "
             "BRANDPOST_MODEL_BACKEND=cli for å bruke Claude Code i stedet.") from e
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise ModelError(
+        raise OppsettFeil(
             "ANTHROPIC_API_KEY mangler. Sett den, eller bruk "
             "BRANDPOST_MODEL_BACKEND=cli hvis du har Claude Code installert.")
 
@@ -113,7 +121,7 @@ def _call_cli(system_prompt: str, user_message: str, schema: dict,
         r = subprocess.run(cmd, input=user_message, capture_output=True,
                            text=True, timeout=timeout)
     except FileNotFoundError as e:
-        raise ModelError(
+        raise OppsettFeil(
             "fant ikke `claude`. Installer Claude Code, eller la "
             "BRANDPOST_MODEL_BACKEND stå på `api`.") from e
     except subprocess.TimeoutExpired as e:
@@ -157,8 +165,8 @@ def structured_call(system_prompt: str, user_message: str, schema: dict,
     for i, m in enumerate(stige):
         try:
             svar = kall(system_prompt, user_message, schema, m, timeout)
-        except QuotaExhausted:
-            raise
+        except (QuotaExhausted, OppsettFeil):
+            raise  # ingen modell fikser en tom nøkkel eller en nådd kontogrense
         except ModelError as e:
             siste = str(e)
             if i < len(stige) - 1:

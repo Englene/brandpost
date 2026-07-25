@@ -75,6 +75,26 @@ def cmd_pulse(args) -> int:
     return 0
 
 
+def cmd_plan(args) -> int:
+    """Vis (og med --refresh: rull) innholdsplanen: ukesnarrativ + slots man/ons/fre."""
+    vault = _vault(args)
+    if args.refresh:
+        res = planmod.refresh_plan(vault, brand_key=args.brand, horizon_days=args.horizon)
+        print(f"  🗓  plan rullet: {len(res.get('slots', []))} slots → {res.get('_path', '')}")
+    plan = planmod.load_plan(vault)
+    if not plan:
+        print("  (ingen plan ennå: kjør `plan --refresh`)")
+        return 0
+    for w in plan.get("weeks", []):
+        print(f"  {w.get('iso_week')}: {w.get('narrativ', '')}")
+    marks = {"planlagt": "·", "utkast": "✎", "publisert": "✓"}
+    for s in plan.get("slots", []):
+        print(f"   {marks.get(s.get('status'), '·')} {s.get('date')} "
+              f"[{s.get('format', 'bilde')}] {s.get('pillar') or '(åpen)'}: "
+              f"{(s.get('tema') or '(ledig slot)')[:64]}")
+    return 0
+
+
 def cmd_stats(args) -> int:
     """Hent respons-tall (reaksjoner/kommentarer) for publiserte innlegg og skriv
     engagement.json. Read-only mot LinkedIn; degraderer pent uten scope/creds."""
