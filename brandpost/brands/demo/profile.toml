@@ -1,0 +1,56 @@
+# Demo Labs: et OPPDIKTET selskap, laget for å vise hvordan feltene henger sammen.
+# Kopier denne mappa til brands/<ditt-navn>/ og bytt innholdet. Ingen kodeendringer
+# trengs for et nytt merke.
+key = "demo"
+name = "Demo Labs"
+handle = "demo-labs"          # @handle som tagger firmasida i innleggsteksten
+enabled = true                # med i standardkjøringen
+wordmark = "demo labs"        # ordmerke-teksten på kortet (logoen tegnes ved siden av)
+language = "no"               # språket innleggene skrives på (ISO-kode)
+
+[linkedin]
+# Firmasidas ID, som du finner i URL-en til admin-panelet:
+# linkedin.com/company/<ID>/admin/dashboard/  ->  urn:li:organization:<ID>
+# Tom = ingen publisering, kun generering. Det er en trygg standard.
+org_urn = ""
+# @handle som skrives i innleggsteksten for å tagge firmasida. Slå den opp i
+# LinkedIns egen mention-liste: skriv @ og se hvilket navn som gir NØYAKTIG ett
+# treff. Er den for generisk, tagger du en tilfeldig annen bedrift.
+handle = "demo-labs"
+
+[palette]                     # seks farger. Alt annet i kortet utledes fra disse.
+bg = "#F5F3EF"                # kortets bakgrunn, den store rolige flaten
+ink = "#4A5568"               # brødtekst
+headline = "#1A2E45"          # display-tekst, høy kontrast mot bg
+brand = "#254C7A"             # primærfargen. Fyller de STORE formene i motivet
+shape = "#DCE4EE"             # sekundær bakgrunnstone, kun små svake flater
+dark = "#1A2E45"              # mørkt panel
+
+[fonts]                       # fra assets/fonts/ (OFL-lisensiert, følger med)
+display = "Fraunces.ttf"
+body = "Inter.ttf"
+
+[media]
+logo = "media/logo.png"       # valgfritt. Uten logo dropper motoren merke-formene
+
+# Pilarene er temaene du vil bli kjent for. Motoren roterer mellom dem og måler
+# dekning, så du ikke skriver om det samme hver uke. Tre til seks er et godt tall.
+[[pillar]]
+id = "frist-varsling"
+label = "Frister"
+desc = "Hva som faktisk skjer når en frist nærmer seg, og hva folk misforstår."
+
+[[pillar]]
+id = "myte-avliving"
+label = "Myter"
+desc = "Vanlige antakelser i bransjen som ikke stemmer, med tallet som viser det."
+
+[[pillar]]
+id = "hvem-passer"
+label = "Hvem det passer for"
+desc = "Hvem som har nytte av dette, og like viktig: hvem som ikke har det."
+
+[[pillar]]
+id = "bak-kulissene"
+label = "Slik jobber vi"
+desc = "Hvordan arbeidet faktisk gjøres, uten å love mer enn vi holder."

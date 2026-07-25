@@ -1,0 +1,98 @@
+<div class="bg-ink-900 border border-ink-700 rounded-2xl p-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold capitalize">{{ cal.label }}</h2>
+    <div class="flex gap-2">
+      <button hx-get="/some/api/calendar?month={{ cal.prev }}&brand={{ cal.merke }}" hx-target="#calendar"
+              class="px-2 py-1 rounded bg-ink-800 hover:bg-ink-700 text-sm">◀</button>
+      <button hx-get="/some/api/calendar?month={{ cal.next }}&brand={{ cal.merke }}" hx-target="#calendar"
+              class="px-2 py-1 rounded bg-ink-800 hover:bg-ink-700 text-sm">▶</button>
+    </div>
+  </div>
+  <div class="grid grid-cols-7 gap-1 text-[11px] text-paper/40 mb-1">
+    {% for dn in ["man", "tir", "ons", "tor", "fre", "lør", "søn"] %}
+      <div class="text-center">{{ dn }}</div>
+    {% endfor %}
+  </div>
+  {% for week in cal.weeks %}
+  <div class="grid grid-cols-7 gap-1 mb-1">
+    {% for c in week %}
+    <div hx-get="/some/api/drafts?day={{ c.date }}&brand={{ cal.merke }}" hx-target="#day-panel"
+         data-dag="{{ c.date }}" ondragover="kalDragOver(event)" ondragleave="kalDragLeave(event)"
+         ondrop="kalDrop(event)"
+         class="kal-celle min-h-20 rounded-lg p-1.5 cursor-pointer border hover:bg-ink-700
+                {{ 'border-green-500/60' if c.is_today else 'border-ink-700' }}
+                {{ 'bg-ink-800' if c.in_month else 'bg-ink-900 opacity-40' }}">
+      <div class="text-[11px] {{ 'text-green-300 font-bold' if c.is_today else ('text-paper/70' if c.is_postday else 'text-paper/40') }}">
+        {{ c.day }}{% if c.is_postday and c.in_month %} ·{% endif %}
+      </div>
+      {% if c.slot %}
+        <div title="{{ c.slot.tema }}"
+             class="mt-0.5 text-[10px] truncate rounded px-1
+                    {{ 'bg-green-500/25 text-green-200' if c.slot.status == 'publisert'
+                       else ('bg-amber-500/25 text-amber-200' if c.slot.status == 'utkast'
+                       else 'bg-sky-500/25 text-sky-200') }}">
+          {{ c.slot.tema or 'ledig slot' }}
+        </div>
+      {% endif %}
+      {% for dr in c.drafts[:2] %}
+        <div title="{{ dr.headline }}"
+             {% if dr.status != 'published' %}draggable="true"
+             ondragstart="kalDragStart(event, '{{ dr.kildedag }}', {{ dr.nr }})"{% endif %}
+             class="mt-0.5 flex items-center gap-1 rounded px-0.5 py-0.5
+                    {{ 'cursor-grab active:cursor-grabbing hover:bg-ink-600' if dr.status != 'published' }}">
+          {% if dr.thumb %}
+            <img src="{{ dr.thumb }}" alt="" loading="lazy"
+                 class="w-6 h-6 rounded object-cover shrink-0 pointer-events-none">
+          {% endif %}
+          <span class="text-[10px] truncate {{ 'text-green-300' if dr.status == 'published' else ('text-sky-200' if dr.status == 'planlagt' else 'text-paper/80') }}">
+            {{ '✓' if dr.status == 'published' else ('🗓' if dr.status == 'planlagt' else '✎') }}{% if dr.tid %} {{ dr.tid }}{% endif %} {{ dr.headline }}
+          </span>
+        </div>
+      {% endfor %}
+      {% if c.drafts|length > 2 %}
+        <div class="text-[10px] text-paper/40">+{{ c.drafts|length - 2 }} til</div>
+      {% endif %}
+      {% for e in c.events[:2] %}
+        <div title="{{ e.title }}" class="mt-0.5 text-[10px] truncate text-paper/35">
+          {{ e.time }} {{ e.title }}
+        </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% if flash %}<div class="text-[11px] text-sky-300 mt-2">{{ flash }}</div>{% endif %}
+  <div class="text-[10px] text-paper/40 mt-2">
+    · = publiseringsdag (man/tir/ons/tor) · <span class="text-sky-300">blå</span> planlagt ·
+    <span class="text-amber-300">gul</span> utkast klart · <span class="text-green-300">grønn</span> publisert ·
+    grå linjer er møter/frister. Dra et utkast til en annen dag for å flytte utsendelsen.
+  </div>
+</div>
+
+<script>
+  // Dra-og-slipp: slipp på en dag endrer TIDSPUNKTET, filene blir liggende der
+  // de ble laget. Klokkeslettet beholdes hvis innlegget alt var planlagt.
+  function kalDragStart(e, kildedag, nr) {
+    e.dataTransfer.setData("text/plain", JSON.stringify({kildedag: kildedag, nr: nr}));
+    e.dataTransfer.effectAllowed = "move";
+    e.stopPropagation();                       // ikke last dagspanelet mens vi drar
+  }
+  function kalDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add("ring-2", "ring-sky-400");
+  }
+  function kalDragLeave(e) {
+    e.currentTarget.classList.remove("ring-2", "ring-sky-400");
+  }
+  function kalDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove("ring-2", "ring-sky-400");
+    var til = e.currentTarget.dataset.dag;
+    var data;
+    try { data = JSON.parse(e.dataTransfer.getData("text/plain")); } catch (_) { return; }
+    if (!data || !til || data.kildedag === til) return;   // sluppet på samme dag
+    htmx.ajax("POST", "/some/api/draft/" + data.kildedag + "/" + data.nr
+              + "/move?brand={{ cal.merke }}",
+              {target: "#calendar", swap: "innerHTML", values: {to: til}});
+  }
+</script>

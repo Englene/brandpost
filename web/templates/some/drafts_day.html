@@ -1,0 +1,17 @@
+<div class="bg-ink-900 border border-ink-700 rounded-2xl p-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold">Utkast · {{ daypanel.day }}</h2>
+    {% if daypanel.slot %}
+      <div class="text-xs text-sky-300 truncate max-w-[50%]" title="{{ daypanel.slot.tema }}">
+        Plan ({{ daypanel.slot.status }}): {{ daypanel.slot.tema or 'ledig slot' }}
+      </div>
+    {% endif %}
+  </div>
+  {% if not daypanel.cards %}
+    <div class="text-paper/50 text-sm">Ingen utkast denne dagen. Velg en annen dag i kalenderen,
+      eller vent til neste kjøring (man/ons/fre).</div>
+  {% endif %}
+  <div class="space-y-4">
+    {% for c in daypanel.cards %}{% include "some/draft_card.html" %}{% endfor %}
+  </div>
+</div>

@@ -1,0 +1,129 @@
+<div class="some-card bg-ink-800 border border-ink-700 rounded-xl p-4" id="card-{{ c.day }}-{{ c.d.nr }}">
+  <div class="flex items-center justify-between mb-2">
+    <div class="text-[11px] uppercase tracking-wide text-paper/50">
+      nr {{ c.d.nr }} · {{ c.d.format }}{% if c.is_karusell %} · {{ c.d.n }} slides{% endif %}
+      · {{ c.d.brand }}{% if c.d.pillar %} · {{ c.d.pillar }}{% endif %}
+    </div>
+    {% if c.d.status == 'published' %}
+      <a href="{{ c.d.linkedin_url }}" target="_blank"
+         class="text-xs bg-green-500/20 text-green-200 rounded-full px-2 py-0.5">✓ publisert</a>
+    {% elif c.d.status == 'planlagt' %}
+      <span class="text-xs bg-sky-500/20 text-sky-200 rounded-full px-2 py-0.5"
+            title="Planlagt på LinkedIn{% if c.d.scheduled_confirmed %}: {{ c.d.scheduled_confirmed }}{% endif %}">
+        🗓 planlagt{% if c.d.scheduled_at %} · {{ c.d.scheduled_at[5:16]|replace('T',' ') }}{% endif %}</span>
+    {% else %}
+      <span class="text-xs bg-amber-500/20 text-amber-200 rounded-full px-2 py-0.5">utkast</span>
+    {% endif %}
+  </div>
+  {% if c.note %}<div class="text-xs text-green-300 mb-2">{{ c.note }}</div>{% endif %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      {% if c.slides %}
+        <div class="flex overflow-x-auto snap-x snap-mandatory gap-2 rounded-lg pb-1"
+             title="Scroll sidelengs for å bla i sliden">
+          {% for s in c.slides %}
+            <img src="{{ s }}" alt="slide {{ loop.index }}"
+                 class="rounded-lg h-72 w-auto shrink-0 snap-start">
+          {% endfor %}
+        </div>
+        <div class="text-[10px] text-paper/40 mt-1">{{ c.slides|length }} slides: scroll sidelengs for å bla</div>
+      {% elif c.media %}
+        <img src="{{ c.media }}" alt="{{ c.d.headline }}" class="rounded-lg w-full">
+      {% endif %}
+      <div class="flex flex-wrap gap-2 mt-2 text-xs">
+        {% if c.media %}<a href="{{ c.media }}" download class="px-2 py-1 rounded bg-ink-700 hover:bg-ink-600">Last ned bilde</a>{% endif %}
+        {% if c.pdf %}<a href="{{ c.pdf }}" download class="px-2 py-1 rounded bg-ink-700 hover:bg-ink-600">Last ned PDF</a>{% endif %}
+      </div>
+      <form hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}/regen"
+            hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML"
+            class="mt-2 flex gap-2 text-xs">
+        <input name="note"
+               placeholder="{% if c.is_karusell %}Hva var galt? F.eks. «for mye tekst», «punkt 3 er svakt»{% else %}Hva var galt? F.eks. «feil grønnfarge», «formen ser rar ut»{% endif %}"
+               class="flex-1 bg-ink-900 border border-ink-700 rounded px-2 py-1">
+        <button type="submit" class="px-2 py-1 rounded bg-ink-700 hover:bg-ink-600 shrink-0">
+          <span class="htmx-indicator">⏳ </span>{{ 'Skriv om slidene' if c.is_karusell else 'Regenerer bilde' }}</button>
+      </form>
+      {% if c.rettelser %}
+        <div class="text-[10px] text-paper/40 mt-1">
+          Rettelser motoren tar med videre:
+          {% for r in c.rettelser %}<span class="text-paper/60">«{{ r }}»</span>{% if not loop.last %}, {% endif %}{% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <div>
+      <form hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}"
+            hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML" class="space-y-2">
+        <input name="headline" value="{{ c.d.headline }}"
+               class="w-full bg-ink-900 border border-ink-700 rounded px-2 py-1 text-sm">
+        <textarea name="body" rows="7" id="body-{{ c.day }}-{{ c.d.nr }}"
+                  class="w-full bg-ink-900 border border-ink-700 rounded px-2 py-1 text-sm">{{ c.d.body }}</textarea>
+        <input name="why_now" value="{{ c.d.why_now }}"
+               class="w-full bg-ink-900 border border-ink-700 rounded px-2 py-1 text-xs text-paper/70">
+        <div class="flex flex-wrap gap-2 text-xs">
+          <button type="submit" class="px-3 py-1.5 rounded bg-green-600/80 hover:bg-green-600 text-white">Lagre</button>
+          <button type="button" data-copy="body-{{ c.day }}-{{ c.d.nr }}"
+                  class="px-3 py-1.5 rounded bg-ink-700 hover:bg-ink-600">Kopier tekst</button>
+          {% if c.d.status != 'published' %}
+            <button type="button"
+                    hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}/publish"
+                    hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML"
+                    hx-confirm="Publisere «{{ c.d.headline }}» via API?{% if not c.linkedin_enabled %} (LINKEDIN_ENABLED=0: blir dry-run){% endif %}"
+                    class="px-3 py-1.5 rounded bg-sky-600/70 hover:bg-sky-600 text-white">
+              <span class="htmx-indicator">⏳ </span>Publiser via API</button>
+          {% endif %}
+        </div>
+      </form>
+      {% if c.can_schedule %}
+        <form hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}/schedule"
+              hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML"
+              hx-confirm="Planlegge «{{ c.d.headline }}»{% if c.is_karusell %} som dokumentinnlegg{% endif %} til valgt tidspunkt?{% if not c.schedule_enabled %} (LINKEDIN_ENABLED=0: blir dry-run){% endif %}"
+              class="mt-3 p-2 rounded-lg bg-sky-900/20 border border-sky-800/40">
+          <div class="text-[11px] uppercase tracking-wide text-sky-200/70 mb-1">
+            {{ 'Planlagt, endre tidspunkt' if c.er_planlagt else 'Aksepter og planlegg' }}</div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input type="datetime-local" name="when" value="{{ c.suggest_dt }}" step="900"
+                   class="bg-ink-900 border border-ink-700 rounded px-2 py-1 text-xs text-paper">
+            <button type="submit"
+                    class="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium">
+              <span class="htmx-indicator">⏳ </span>{{ 'Lagre nytt tidspunkt' if c.er_planlagt else 'Planlegg utsendelse' }}</button>
+            {% if c.er_planlagt %}
+              <button type="button"
+                      hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}/unschedule"
+                      hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML"
+                      hx-confirm="Avlyse planleggingen? Innlegget publiseres da ikke."
+                      class="px-3 py-1.5 rounded bg-ink-700 hover:bg-ink-600 text-xs">Avlys</button>
+            {% endif %}
+          </div>
+          <div class="text-[10px] text-paper/40 mt-1">
+            {% if c.er_planlagt %}Publiseres automatisk til dette tidspunktet, og du får e-post i samme øyeblikk.
+            {% else %}Trykk her for å aktivere utsendelsen. Foreslått: slot-dagen kl. 10:00 (velg kvarter).{% endif %}
+          </div>
+        </form>
+      {% endif %}
+      {% if c.d.status != 'published' %}
+        <form hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}/published"
+              hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML" class="mt-2 flex gap-2">
+          <input name="url" placeholder="Lim inn LinkedIn-URL etter manuell posting"
+                 class="flex-1 bg-ink-900 border border-ink-700 rounded px-2 py-1 text-xs">
+          <button type="submit" class="text-xs px-2 py-1 rounded bg-ink-700 hover:bg-ink-600 shrink-0">Marker publisert</button>
+        </form>
+      {% endif %}
+      {% if c.d.status != 'published' %}
+        <button type="button"
+                hx-post="/some/api/draft/{{ c.day }}/{{ c.d.nr }}/delete"
+                hx-target="#card-{{ c.day }}-{{ c.d.nr }}" hx-swap="outerHTML"
+                hx-confirm="Slette «{{ c.d.headline }}»? Filene flyttes til papirkurven og kan hentes tilbake."
+                class="mt-2 text-xs px-2 py-1 rounded bg-red-900/40 hover:bg-red-800/60 text-red-200">
+          <span class="htmx-indicator">⏳ </span>Slett utkast</button>
+      {% endif %}
+      {% if c.kilder %}
+        <div class="mt-2 text-xs text-paper/50">
+          <span class="uppercase tracking-wide text-[10px] text-paper/40">Kilder (kun for deg, ikke i innlegget)</span>
+          <ul class="list-disc ml-4 mt-0.5 space-y-0.5">
+            {% for k in c.kilder %}<li class="break-all">{{ k }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>

@@ -1,0 +1,21 @@
+# Kjerne
+Pillow>=10.0
+requests>=2.31
+python-dotenv>=1.0
+
+# Tekstmodell (standard bakende). Trengs ikke hvis du kjører
+# BRANDPOST_MODEL_BACKEND=cli og har Claude Code installert.
+anthropic>=0.40
+
+# Dashbord
+fastapi>=0.110
+uvicorn>=0.29
+jinja2>=3.1
+python-multipart>=0.0.9
+
+# Bildemotor: velg minst én
+google-genai>=1.0      # Gemini (standard)
+openai>=1.40           # gpt-image-2 (alternativ)
+
+# Nettleser-publisering (valgfritt: ekte utkast + LinkedIns egen planlegging)
+playwright>=1.44

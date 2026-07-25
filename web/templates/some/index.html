@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}SoMe · Notater{% endblock %}
+{% block body %}
+<div class="h-screen overflow-y-auto">
+  <div class="max-w-screen-2xl mx-auto p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h1 class="text-2xl font-bold">SoMe-kommandosenter</h1>
+        <div class="text-xs text-paper/50">Motoren foreslår og planlegger, du peker. Ingenting publiseres uten deg.</div>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 text-xs text-paper/50">
+          Selskap
+          <select onchange="location.href='/some?brand=' + this.value"
+                  class="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-sm text-paper">
+            {% for m in merker.valg %}
+              <option value="{{ m.key }}" {% if m.key == merker.valgt %}selected{% endif %}>
+                {{ m.navn }}{% if m.dvale %} (dvale){% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div class="xl:col-span-2 space-y-6">
+        <div id="calendar">{% include "some/calendar.html" %}</div>
+        <div id="day-panel">{% include "some/drafts_day.html" %}</div>
+      </div>
+      <div class="space-y-6">
+        <div id="pulse">{% include "some/pulse.html" %}</div>
+        <div id="plan">{% include "some/plan.html" %}</div>
+        <div id="ryddeboks">
+          <button hx-get="/some/api/purge/preview?brand={{ merker.valgt }}"
+                  hx-target="#ryddeboks" hx-swap="innerHTML"
+                  class="w-full text-xs text-paper/40 hover:text-paper border border-ink-700 rounded-xl p-2">
+            Rydd bordet: se hva som kan slettes, og generer nytt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+/* Kopier til utklippstavla, med fallback for usikker kontekst (http over LAN). */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-copy]');
+  if (!b) return;
+  const ta = document.getElementById(b.dataset.copy);
+  if (!ta) return;
+  const done = () => {
+    const orig = b.textContent;
+    b.textContent = 'Kopiert!';
+    setTimeout(() => { b.textContent = orig; }, 1500);
+  };
+  const fallback = () => {
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch (err) { /* stille */ }
+    ta.setSelectionRange(0, 0); ta.blur();
+    done();
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(ta.value).then(done, fallback);
+  } else {
+    fallback();
+  }
+});
+</script>
+{% endblock %}

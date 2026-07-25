@@ -1,0 +1,29 @@
+# Det MINSTE mulige merket, og samtidig et eksempel på et merke i dvale.
+#
+# Ingen logo, ingen pilarer, ingen prosa. Motoren degraderer pent: uten logo blir
+# kortene typografi-drevne, og uten pilarer roterer den ikke mellom temaer. Det
+# fungerer, men det blir generisk, og det er hele poenget med å vise det: kvaliteten
+# kommer fra det du fyller ut, ikke fra koden.
+#
+# enabled = false holder det utenfor standardkjøringen. Å fylle inn org_urn
+# aktiverer det IKKE; kun dette flagget gjør det.
+key = "minimal"
+name = "Minimal"
+handle = "minimal"
+enabled = false
+wordmark = "Minimal"
+
+[linkedin]
+org_urn = ""
+
+[palette]
+bg = "#FAFAF8"
+ink = "#5B6472"
+headline = "#22303F"
+brand = "#7A5C3E"
+shape = "#EDE7DE"
+dark = "#22303F"
+
+[fonts]
+display = "Fraunces.ttf"
+body = "Inter.ttf"

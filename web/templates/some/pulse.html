@@ -1,0 +1,45 @@
+<div class="bg-ink-900 border border-ink-700 rounded-2xl p-4">
+  <div class="flex items-center justify-between mb-2">
+    <h2 class="text-lg font-semibold">Dagsaktuelt</h2>
+    <button hx-post="/some/api/pulse/refresh" hx-target="#pulse"
+            class="text-xs px-2 py-1 rounded bg-ink-700 hover:bg-ink-600">
+      <span class="htmx-indicator">⏳ </span>Oppdater puls</button>
+  </div>
+  {% if note %}<div class="text-xs text-paper/50 mb-2">{{ note }}</div>{% endif %}
+  {% if pulse.generated %}<div class="text-[11px] text-paper/40 mb-2">Sist hentet: {{ pulse.generated }}</div>{% endif %}
+  {% if not pulse.angles %}
+    <div class="text-sm text-paper/50">Ingen ferske vinkler ennå{% if pulse.reason %}: {{ pulse.reason }}{% endif %}.</div>
+  {% endif %}
+  <div class="space-y-2">
+    {% for a in pulse.angles or [] %}
+      <div class="bg-ink-800 rounded-lg p-2">
+        <div class="text-sm">{{ a.tema }}</div>
+        <div class="text-xs text-paper/50">{{ a.hvorfor_naa }}</div>
+        <div class="flex gap-1 mt-1">
+          {% if a.format_hint %}<span class="text-[10px] bg-sky-500/20 text-sky-200 rounded-full px-1.5">{{ a.format_hint }}</span>{% endif %}
+          {% if a.pilar_hint %}<span class="text-[10px] bg-green-500/20 text-green-200 rounded-full px-1.5">{{ a.pilar_hint }}</span>{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% if pulse.wins %}
+    <h3 class="text-[11px] uppercase tracking-wide text-paper/40 mt-3 mb-1">Seire</h3>
+    <ul class="text-xs text-paper/70 list-disc ml-4 space-y-0.5">
+      {% for w in pulse.wins %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% if pulse.sporsmal_folk_stiller %}
+    <h3 class="text-[11px] uppercase tracking-wide text-paper/40 mt-3 mb-1">Spørsmål folk stiller</h3>
+    <ul class="text-xs text-paper/70 list-disc ml-4 space-y-0.5">
+      {% for q in pulse.sporsmal_folk_stiller %}<li>{{ q }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% if engagement.topp %}
+    <h3 class="text-[11px] uppercase tracking-wide text-paper/40 mt-3 mb-1">Respons på publiserte</h3>
+    {% for p in engagement.topp %}
+      <div class="text-xs text-paper/70 truncate" title="{{ p.headline }}">
+        👍 {{ p.reactions }} · 💬 {{ p.comments }} · {{ p.headline }}
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
