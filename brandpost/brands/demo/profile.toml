@@ -3,7 +3,8 @@
 # trengs for et nytt merke.
 key = "demo"
 name = "Demo Labs"
-handle = "demo-labs"          # @handle som tagger firmasida i innleggsteksten
+handle = "demo-labs"          # kort variant, brukes i filnavn (IKKE @-taggen,
+                              # den står under [linkedin] lenger nede)
 enabled = true                # med i standardkjøringen
 wordmark = "demo labs"        # ordmerke-teksten på kortet (logoen tegnes ved siden av)
 language = "no"               # språket innleggene skrives på (ISO-kode)

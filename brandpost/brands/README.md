@@ -29,7 +29,7 @@ brands/<key>/
 3. Legg logo/tilda/ref-bilder i `media/`. Uten logo/refs degraderer motoren pent
    (typografi-kort fungerer fortsatt).
 4. Skriv de 7 markdown-filene. Manglende fil er lov (blir tom seksjon).
-5. Test: `.venv/bin/python -c "from brandpost.social import brandkit;
+5. Test: `.venv/bin/python -c "from brandpost import brandkit;
    print(brandkit.load_brand('<nytt-navn>'))"`.
 6. `[linkedin].org_urn`: merkets egen firmaside, og det eneste som skiller to sider
    fra hverandre når de deler app og token. Finn ID-en i URL-en til firmasidas

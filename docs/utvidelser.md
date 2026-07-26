@@ -4,7 +4,8 @@ Tre steder systemet er bevisst dumt, så du kan koble på ditt eget.
 
 ## Kontekst: `notes/`
 
-Alt av `.md` under arbeidsmappas `notes/` blir råstoff. Første linje er tittelen,
+Alt av `.md` under `workspace/notes/` blir råstoff (arbeidsmappa styres av
+`BRANDPOST_WORKSPACE`). Første linje er tittelen,
 de neste blir sammendraget. Ingen struktur kreves.
 
 Vil du automatisere det, se [agent/kontekst.md](../agent/kontekst.md).

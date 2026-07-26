@@ -26,7 +26,9 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+from . import paths
+
+_REPO_ROOT = paths.REPO_ROOT
 AUTHORIZE_URL = "https://www.linkedin.com/oauth/v2/authorization"
 TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 API = "https://api.linkedin.com"

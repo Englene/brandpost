@@ -19,6 +19,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# Repo-rota. Lå som parents[2] i tre moduler, som pekte UT AV repoet: .env ble
+# aldri lest, og «cp .env.example .env» i README virket ikke for noen. Én kilde nå.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 DEFAULT_WORKSPACE = Path.cwd() / "workspace"
 
 

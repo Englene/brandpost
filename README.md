@@ -37,6 +37,11 @@ pip install -r requirements.txt
 cp .env.example .env        # fyll inn minst ANTHROPIC_API_KEY + én bildenøkkel
 ```
 
+Har du Claude Code-abonnement, kan du hoppe over `ANTHROPIC_API_KEY` og sette
+`BRANDPOST_MODEL_BACKEND=cli` i stedet. Da koster tekstgenereringen ingenting
+ekstra. En bildenøkkel trengs uansett hvis du vil ha motiver; uten den blir alle
+kortene typografi-drevne, som også ser bra ut.
+
 Lag ditt eget merke:
 
 ```bash
@@ -54,6 +59,9 @@ python -m brandpost.cli run --brand mitt-firma
 python main.py                      # http://localhost:5050/some
 ```
 
+Utkastene havner i `workspace/`. Setter du `BRANDPOST_WORKSPACE` et sted, må den
+peke samme sted når du starter dashbordet, ellers ser du en tom side.
+
 Har du ikke lyst til å gjøre dette for hånd, se [agent/](agent/): der ligger en
 prompt du limer inn i Claude Code eller Codex, som intervjuer deg og fyller ut
 filene for deg.
@@ -63,7 +71,7 @@ filene for deg.
 ## Slik henger det sammen
 
 ```
-notes/*.md ──┐
+workspace/notes/*.md ──┐
              ├──► hjernen (tekstmodell) ──► forslag ──► dashbord ──► LinkedIn
 merkevare ───┘         │                                   ▲
                        └──► bildemotor ──► kort            │
@@ -71,8 +79,8 @@ merkevare ───┘         │                                   ▲
 ```
 
 - **Merkevaren** er tekstfiler, ikke kode. Ingen kodeendringer for et nytt merke.
-- **Notatene** er valgfrie. Legg markdown i `notes/`, så bruker hjernen det som
-  råstoff. Tom mappe fungerer, det blir bare mer generisk.
+- **Notatene** er valgfrie. Legg markdown i `workspace/notes/`, så bruker hjernen
+  det som råstoff. Tom mappe fungerer, det blir bare mer generisk.
 - **Bildene** lages i to lag: modellen tegner KUN innholdet i merkefargene, og
   koden legger overskrift, logo og ordmerke oppå. Det er grepet som gjør at
   AI-delen ser ut som typografi og ikke som et innlimt bilde.
@@ -168,7 +176,7 @@ Selve *genereringen* er derimot skjønn, og passer som en agent-kjøring. Se
   uavhengig genererte bilder lett ser ut som åtte ulike serier. Løses det, blir
   karusellene mye sterkere.
 - **Flere plattformer.** Alt er bygget rundt LinkedIn. Motoren er ikke det.
-- **Kontekst-tilkoblinger.** `notes/` er bevisst dum. En kobling mot kalender,
+- **Kontekst-tilkoblinger.** Notatmappa er bevisst dum. En kobling mot kalender,
   e-post eller Slack ville gitt hjernen ferskere råstoff. Se
   [docs/utvidelser.md](docs/utvidelser.md).
 - **Redigering av enkelt-slides** i dashbordet.

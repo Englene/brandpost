@@ -32,7 +32,7 @@ from . import (brandkit, carousel as carouselmod, context as ctxmod,
 
 # Repo-rotens .env (nøkler og BRANDPOST_*-innstillinger). Eksplisitt sti så
 # routinen finner den uansett arbeidskatalog.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = paths.REPO_ROOT
 
 
 def _vault(args) -> Path:
@@ -162,7 +162,9 @@ def _sanitize_spec(spec: dict, *, brand_name: str, handle: str = "",
                     s[k] = _clean_text(s[k])
     body = spec.get("body")
     if isinstance(body, str) and body:
-        tag = f"@{handle}" if handle else f"@{brand_name}"
+        # Uten handle skrives INGEN tagg. Å gjette fra merkenavnet tagger den
+        # bedriften som tilfeldigvis heter det på LinkedIn, altså noen andre.
+        tag = f"@{handle}" if handle else ""
         body = body.replace(tag, "\x00TAG\x00")           # bevar eksisterende tagg
         if handle:  # eldre utkast/hjerne-tekst kan ha den gamle @merkenavn-formen
             body = body.replace(f"@{brand_name}", "\x00TAG\x00")
@@ -631,4 +633,14 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Oppsettsfeil (manglende nøkkel, manglende pakke) er BRUKERENS problem å fikse,
+    # ikke en programfeil. En stacktrace sender folk til kildekoden for noe som løses
+    # med én linje i .env.
+    try:
+        sys.exit(main())
+    except model.OppsettFeil as e:
+        print(f"\n  ⚠️  {e}\n", file=sys.stderr)
+        sys.exit(2)
+    except model.QuotaExhausted as e:
+        print(f"\n  ⚠️  Kontogrensa er nådd: {e}\n", file=sys.stderr)
+        sys.exit(3)

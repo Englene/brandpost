@@ -35,7 +35,7 @@ from .email import _doc, _draft_image
 # kvarter uten å publisere noe. Overstyrer aldri variabler som alt er satt.
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    load_dotenv(paths.REPO_ROOT / ".env")
 except Exception:  # noqa: BLE001
     pass
 

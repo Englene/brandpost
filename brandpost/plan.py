@@ -2,7 +2,7 @@
 
 Modellen foreslår, koden eier kalenderen: hjernen lager ukesnarrativ (den røde
 tråden) og tema per slot, mens deterministiske guardrails bestemmer HVILKE dager
-som fylles (kun publiseringsdagene man/ons/fre), én slot per dag, gyldige
+som fylles (kun publiseringsdagene publiseringsdagene), én slot per dag, gyldige
 pilar-id-er, og at slots som alt har utkast eller er publisert aldri røres.
 Dashbordet viser planen; generatoren følger dagens slot, så innleggene bygger
 en fortbrukeren over ukene i stedet for å være løsrevne enkeltidéer.
@@ -66,7 +66,7 @@ def load_plan(vault: Path | None = None) -> dict:
 
 
 def _post_dates(start: date, horizon_days: int) -> list[date]:
-    """Publiseringsdagene (man/ons/fre) fra og med `start`, innen horisonten."""
+    """Publiseringsdagene (publiseringsdagene) fra og med `start`, innen horisonten."""
     return [start + timedelta(days=i) for i in range(horizon_days)
             if (start + timedelta(days=i)).weekday() in POST_DAYS]
 

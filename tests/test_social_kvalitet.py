@@ -27,10 +27,11 @@ def test_sanitize_spec_moves_urls_to_kilder_and_tags_brand():
             "body": ("Les mer på https://www.regjeringen.no/skattefunn i dag.\n"
                      "Se demo labs for detaljer — det er gratis."),
             "kilder": ["72 627 søknader → produktfakta"]}
-    clim._sanitize_spec(spec, brand_name="Demo Labs", wordmark="demo labs")
+    clim._sanitize_spec(spec, brand_name="Demo Labs", handle="demo-labs",
+                        wordmark="demo labs")
     assert spec["headline"] == "Test, med strek"
     assert "http" not in spec["body"]                      # URL ut av innlegget
-    assert "@Demo Labs" in spec["body"]                  # domenenavn -> tagg
+    assert "@demo-labs" in spec["body"]                    # domenenavn -> tagg
     assert "—" not in spec["body"] and "–" not in spec["body"]
     assert any("regjeringen.no" in k for k in spec["kilder"])   # flyttet til kilder
     assert "72 627 søknader → produktfakta" in spec["kilder"]   # eksisterende består
@@ -159,10 +160,13 @@ def test_sanitize_konverterer_gammel_merkenavn_tagg():
     assert "@Demo Labs" not in spec["body"]
 
 
-def test_sanitize_uten_handle_beholder_gammel_form():
+def test_uten_handle_skrives_INGEN_tagg():
+    """Falt tilbake til @Merkenavn før. Det tagger den bedriften som TILFELDIGVIS
+    heter det på LinkedIn, altså noen andre, i et innlegg som bærer ditt navn.
+    Uten handle skal det ikke stå en tagg i det hele tatt."""
     spec = {"body": "Les mer på demo labs."}
     clim._sanitize_spec(spec, brand_name="Demo Labs", wordmark="demo labs")
-    assert "@Demo Labs" in spec["body"]
+    assert "@" not in spec["body"]
 
 
 def test_brand_profil_har_linkedin_handle():
@@ -316,3 +320,39 @@ def test_fallback_er_aldri_samme_familie_som_primaeren(monkeypatch):
     monkeypatch.delenv("BRANDPOST_MODEL", raising=False)
     monkeypatch.delenv("BRANDPOST_MODEL_FALLBACK", raising=False)
     assert model._family(model.model_name()) != model._family(model.fallback_name())
+
+
+# ── oppsett som må virke for en fersk kloning ──────────────
+
+def test_repo_rota_peker_paa_repoet_selv():
+    """Sto som parents[2] i tre moduler, arvet fra et repo der pakka lå ett nivå
+    dypere. Den pekte UT AV repoet, så `cp .env.example .env` fra README ble aldri
+    lest, og enhver ny bruker fikk «ANTHROPIC_API_KEY mangler» etter å ha satt den.
+
+    Usynlig i utvikling, fordi den som bygger alltid har variablene i skallet."""
+    from brandpost import paths
+    assert (paths.REPO_ROOT / "brandpost").is_dir()
+    assert (paths.REPO_ROOT / "README.md").exists()
+
+
+def test_alle_moduler_bruker_samme_repo_rot():
+    """Tre moduler regnet den ut hver for seg, og alle tre tok feil likt."""
+    from brandpost import cli, linkedin_auth, paths
+    assert cli._REPO_ROOT == paths.REPO_ROOT
+    assert linkedin_auth._REPO_ROOT == paths.REPO_ROOT
+
+
+def test_env_eksempelet_ligger_der_koden_leter():
+    from brandpost import paths
+    assert (paths.REPO_ROOT / ".env.example").exists()
+
+
+def test_brands_readme_viser_en_kommando_som_finnes():
+    """Steg 5 i brands/README var `from brandpost.social import brandkit`, en modul
+    som ikke finnes. Det er den ENESTE anvisningen på hvordan du sjekker at merket
+    ditt lastet, og den står i en av filene oppsett-prompten ber agenten lese."""
+    from brandpost import paths
+    tekst = (paths.REPO_ROOT / "brandpost" / "brands" / "README.md").read_text(encoding="utf-8")
+    assert "brandpost.social" not in tekst
+    if "import brandkit" in tekst:
+        assert "from brandpost import brandkit" in tekst

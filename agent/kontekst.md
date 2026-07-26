@@ -1,7 +1,7 @@
 # Kontekst-runbook
 
 Motoren skriver bedre jo mer den vet om hva som faktisk skjer hos deg. Denne
-oppskriften samler ukas råstoff til `notes/`, som er den eneste kontekst-inngangen.
+oppskriften samler ukas råstoff til `workspace/notes/`, som er den eneste kontekst-inngangen.
 
 Den er bevisst dum: én mappe med markdown. Det betyr at du kan koble på hva som
 helst, og at ingenting går i stykker om du lar være.
@@ -22,7 +22,7 @@ kundesamtaler, support, eller det du har). Se etter:
 - Noe vi lærte og som andre ville hatt nytte av.
 - Noe vi trodde og som viste seg å ikke stemme.
 
-Skriv ETT notat per tema til notes/<dato>-<kort-navn>.md, slik:
+Skriv ETT notat per tema til workspace/notes/<dato>-<kort-navn>.md, slik:
 
     # Én setning som er selve poenget
 
