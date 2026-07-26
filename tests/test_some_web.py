@@ -158,11 +158,11 @@ def test_schedule_button_vises_naar_paa(client, tmp_path, monkeypatch):
     r = client.get(f"/some/api/drafts?day={day}")
     assert r.status_code == 200
     assert "Aksepter og planlegg" in r.text
-    assert f'value="{day}T10:00"' in r.text  # foreslått slot-dag kl. 10:00 (Oscar 22. juli)
+    assert f'value="{day}T10:00"' in r.text  # foreslått slot-dag kl. 10:00 (eieren 22. juli)
 
 
 def test_schedule_skriver_tidspunkt_uten_nettleser(client, tmp_path):
-    """Oscars valg 22. juli: VI eier publiseringen, saa knappen er et lynkjapt
+    """valget 22. juli: VI eier publiseringen, saa knappen er et lynkjapt
     skriv. Ingen nettleser-subprosess som holder forespoerselen aapen i minutter."""
     day, nr = _make_manifest(tmp_path)
     r = client.post(f"/some/api/draft/{day}/{nr}/schedule",
@@ -193,7 +193,7 @@ def test_schedule_gjor_kortet_planlagt(client, tmp_path):
     assert slots.get(day, {}).get("status") in ("planlagt", None)
 
 
-# ── kalender: dra, miniatyr, endre/avlys (Oscars bestilling 23. juli) ─────────
+# ── kalender: dra, miniatyr, endre/avlys (eierens bestilling 23. juli) ─────────
 
 def test_planlagt_kan_endres_og_avlyses(client, tmp_path):
     """Glippe funnet 23. juli: naar et utkast forst var planlagt, forsvant
@@ -245,7 +245,7 @@ def test_planlagt_vises_paa_publiseringsdagen(client, tmp_path):
     assert f"/some/api/draft/{day}/{nr}/" in rp.text     # endepunkt peker paa kildedag
 
 
-# ── merkevalg, sletting og rydding (Oscars bestilling 23. juli 2026) ──
+# ── merkevalg, sletting og rydding (eierens bestilling 23. juli 2026) ──
 
 def test_merkedropdown_viser_alle_selskaper(client):
     r = client.get("/some")
@@ -286,7 +286,7 @@ def test_ryddeliste_viser_eksakt_hva_som_slettes(client, tmp_path):
 
 
 def test_rydding_avbryter_hvis_lista_har_endret_seg(client, tmp_path):
-    """Oscar sier ja til en liste han SÅ. Er tallet et annet nå, har noe kommet til
+    """eieren sier ja til en liste han SÅ. Er tallet et annet nå, har noe kommet til
     siden han leste den, og da skal vi ikke slette noe han aldri fikk se."""
     day, _ = _make_manifest(tmp_path)
     r = client.post("/some/api/purge", data={"antall": 7})

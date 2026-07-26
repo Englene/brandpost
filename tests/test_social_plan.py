@@ -119,7 +119,7 @@ def test_run_fills_open_slots_across_days(tmp_path, monkeypatch):
     assert slots[d2]["status"] == "utkast"
 
 
-# ── kadence: ÉN kilde (Oscars retting 22. juli) ──────────────────────────────
+# ── kadence: ÉN kilde (rettingen 22. juli) ──────────────────────────────
 
 def test_post_days_er_fire_i_uka():
     """2-4 i uka er referansen for firmasider; oftere kannibaliserer rekkevidden."""
@@ -128,7 +128,7 @@ def test_post_days_er_fire_i_uka():
 
 
 def test_post_days_kan_overstyres_med_env(monkeypatch):
-    """Oscar skal kunne prøve daglig uten kodeendring."""
+    """eieren skal kunne prøve daglig uten kodeendring."""
     monkeypatch.setenv("NOTATER_SOME_POST_DAYS", "0,1,2,3,4")
     assert planmod._post_days() == (0, 1, 2, 3, 4)
     monkeypatch.setenv("NOTATER_SOME_POST_DAYS", "tull")

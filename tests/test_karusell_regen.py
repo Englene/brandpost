@@ -99,7 +99,7 @@ def test_motiv_gir_ett_bildekall_til_forsiden(monkeypatch):
 
 
 def test_forsiden_beholder_ren_flate_til_typografien(monkeypatch):
-    """Oscars krav: AI-delen må se typografisk ut. Toppen der ordmerke og tittel
+    """kravet: AI-delen må se typografisk ut. Toppen der ordmerke og tittel
     tegnes skal være merkets egen flate, ikke motivet."""
     b = brandkit.load_brand("demo")
     kunst = Image.new("RGBA", slides.SIZE_PORTRAIT, (200, 30, 30, 255))  # knallrødt
@@ -133,7 +133,7 @@ def test_innholdsslides_far_aldri_motiv():
 # ── omskriving av slide-tekst ──────────────────────────────
 
 def test_omskriving_sender_alle_rettelser_med(monkeypatch, utkast):
-    """Som for bildene: et problem Oscar har påpekt skal ikke komme tilbake."""
+    """Som for bildene: et problem du har påpekt skal ikke komme tilbake."""
     sett = {}
 
     def fake_call(system, user, schema, **k):

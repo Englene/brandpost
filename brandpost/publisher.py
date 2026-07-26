@@ -1,11 +1,11 @@
 """publisher — vi eier publiseringen: legg ut planlagte utkast til avtalt tid.
 
-Oscars valg 22. juli 2026. Alternativet var å la LinkedIn eie planleggingen (den
+valget 22. juli 2026. Alternativet var å la LinkedIn eie planleggingen (den
 publiserer selv, men vi vet ikke når, så varselet måtte komme av etterkant-polling).
 Nå lagrer vi tidspunktet selv, publiserer via API akkurat da, og sender e-posten
 i samme øyeblikk.
 
-Kompromisset Oscar tok bevisst: dette krever at maskinen er våken til avtalt tid.
+Kompromisset eieren tok bevisst: dette krever at maskinen er våken til avtalt tid.
 Derfor tar jobben IGJEN forsinkelser i stedet for å hoppe over dem, men den nekter
 å publisere noe som er mer enn CATCHUP_LIMIT_H timer på etterskudd: et innlegg som
 skulle ut i går morges bør et menneske se på før det plutselig dukker opp i dag.

@@ -1,7 +1,7 @@
 """linkedin — publiser ETT SoMe-utkast til Demo Labs-firmasida (menneske-gated).
 
 Propose-only-linja er urørt: generatoren foreslår (mail + vault, status "proposed").
-Denne modulen poster ett VALGT utkast NÅR Oscar sier fra, aldri i nattkjøringen.
+Denne modulen poster ett VALGT utkast NÅR du sier fra, aldri i nattkjøringen.
 
 Trygg default (speiler `mailer` sitt `NOTATER_MAIL_ENABLED`): `LINKEDIN_ENABLED=0`
 → dry-run, som skriver hva som VILLE postes og sender ingenting. Først `=1` poster ekte.
@@ -15,7 +15,7 @@ For dokumenter er `title` i media-objektet påkrevd; LinkedIn viser PDF-en swipe
 
 Ekte utkast finnes IKKE i API-et: Post-skjemaet sier «PUBLISHED is the only accepted
 field during creation» (DRAFT er ren lese-tilstand). Utkastene bor derfor i vaulten +
-SoMe-eposten, og publisering skjer først når Oscar peker.
+SoMe-eposten, og publisering skjer først når du peker.
 
 Access-token utløper etter ~60 dager; ved 401 refresher vi automatisk med refresh-token.
 """
@@ -234,7 +234,7 @@ def _write_dry_metadata(draft: dict, payload: dict, *, when: datetime | None = N
 def api_commentary(body: str, *, brand_name: str, org_urn: str) -> str:
     """«@Demo Labs» i innleggsteksten → ekte @-mention av firmasida i Posts-API-ets
     little-text-format: `@[Navn](urn:li:organization:…)`. Manuell posting beholder
-    klarteksten (Oscar skriver taggen selv i composeren); API-veien får den ekte."""
+    klarteksten (du skriver taggen selv i composeren); API-veien får den ekte."""
     tag = f"@{brand_name}"
     if not body or not org_urn or tag not in body:
         return body
@@ -244,7 +244,7 @@ def api_commentary(body: str, *, brand_name: str, org_urn: str) -> str:
 def _with_brand_org(cfg: LinkedInConfig, brand_key: str | None) -> LinkedInConfig:
     """Merkets egen firmaside ([linkedin].org_urn i brands/<key>/profile.toml)
     vinner over global LINKEDIN_ORG_URN: samme app + token poster til alle sidene
-    Oscar er admin på, siden velges per utkast via merket."""
+    du er admin på, siden velges per utkast via merket."""
     if not brand_key:
         return cfg
     try:

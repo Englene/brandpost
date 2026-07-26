@@ -1,6 +1,6 @@
 """Dashbord v2: sletting, rydding, rettelser i regenerering og merkevalg.
 
-Oscars bestilling 23. juli 2026. Ingen nett: bildemotoren og LinkedIn mockes.
+eierens bestilling 23. juli 2026. Ingen nett: bildemotoren og LinkedIn mockes.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def test_rettelser_havner_i_motiv_prompten():
 
 
 def test_alle_rettelser_folger_med_ikke_bare_den_nyeste():
-    # Et problem Oscar har påpekt én gang skal ikke komme tilbake ved neste forsøk.
+    # Et problem du har påpekt én gang skal ikke komme tilbake ved neste forsøk.
     ut = render.with_corrections("motiv", ["ikke bruk kapsel-form", "feil grønn"])
     assert "ikke bruk kapsel-form" in ut
 
@@ -89,7 +89,7 @@ def test_uten_rettelser_er_motivet_urort():
 # ── publisering varsler ALLTID, uansett hvem som ba om den ──
 
 def test_publiser_ett_sender_epost_og_markerer(tmp_path, monkeypatch):
-    """Dashbordets Publiser-knapp postet uten å varsle (Oscar fikk ingen e-post
+    """Dashbordets Publiser-knapp postet uten å varsle (eieren fikk ingen e-post
     23. juli). Begge veiene går nå gjennom denne ene funksjonen."""
     mpath = _manifest(tmp_path, [{"nr": 1, "headline": "H", "status": "proposed"}])
     manifest = json.loads(mpath.read_text())
@@ -164,7 +164,7 @@ def test_slot_med_levende_utkast_rores_ikke(tmp_path):
 
 def test_publisert_vises_paa_publiseringsdagen(tmp_path):
     from web import app as somemod
-    # Laget 24. juli, gikk ut 23. juli (Oscar trykte publiser dagen før mappa tilsier).
+    # Laget 24. juli, gikk ut 23. juli (eieren trykte publiser dagen før mappa tilsier).
     d = {"status": "published", "published_at": "2026-07-23T09:44"}
     assert somemod.visningsdag(d, "2026-07-24") == "2026-07-23"
 

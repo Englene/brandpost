@@ -120,7 +120,7 @@ def pillar_coverage(vault: Path | None = None, pillar_ids: list[str] | None = No
 
 
 def read_lessons(vault: Path | None = None, max_chars: int = 2500) -> str:
-    """Oscars notater om hva som funker (respons/likes) i `_system/socials/lessons.md`.
+    """eierens notater om hva som funker (respons/likes) i `_system/socials/lessons.md`.
     Frøet til «analysér responsen»: hjernen leser dette og eksperimenterer videre.
     Tomt hvis fila ikke finnes."""
     p = socials_dir(vault) / "lessons.md"
@@ -179,7 +179,7 @@ def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes,
         "png_path": str(png_path), "md_path": str(md_path),
         "body": body, "why_now": why,
         "kilder": [k for k in (spec.get("kilder") or []) if isinstance(k, str)],
-        "status": "proposed",  # → "published" når Oscar publiserer den (godkjenn-hvert)
+        "status": "proposed",  # → "published" når eieren publiserer den (godkjenn-hvert)
         # originalspec (uten brand) så dashbordet kan regenerere bildet etter redigering
         "spec": {k: v for k, v in spec.items() if k != "brand"},
     }
@@ -258,7 +258,7 @@ def record(vault: Path | None, drafts: list[dict], *, when: datetime | None = No
 # `cli.py publish` sender ÉN valgt post og setter "published" + linkedin_url.
 # ETT manifest per dag, FELLES for alle merker: hvert utkast bærer sitt faste
 # «publiser: N»-nummer i "nr" (aldri gjenbrukt samme dag), så et svar på en
-# eldre epost aldri kan treffe et annet utkast enn det Oscar faktisk så.
+# eldre epost aldri kan treffe et annet utkast enn det eieren faktisk så.
 # ("n" er opptatt: slide-antall på karuseller.)
 
 
@@ -445,7 +445,7 @@ def trash_draft(manifest_path: Path, manifest: dict, idx: int,
 
 def deletable_drafts(vault: Path | None = None) -> list[dict]:
     """Alt som KAN slettes (alt som ikke er publisert), nyeste dag først. Brukes til
-    å vise Oscar den eksakte lista FØR en masse-sletting, aldri til å slette blindt."""
+    å vise eieren den eksakte lista FØR en masse-sletting, aldri til å slette blindt."""
     ut: list[dict] = []
     for mpath in sorted(socials_dir(vault).glob("*/manifest.json"), reverse=True):
         try:

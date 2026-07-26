@@ -138,7 +138,7 @@ def test_publish_draft_preview_uses_mention(tmp_path, monkeypatch):
     res = linkedin.publish_draft(draft, cfg=cfg)
     assert "@[Demo Labs](urn:li:organization:42)" in res["preview"]["commentary"]
 
-# ── @handle-tagging (Oscars retting 22. juli: @demo-labs, ikke demo labs) ──
+# ── @handle-tagging (rettingen 22. juli: @demo-labs, ikke demo labs) ──
 
 def test_sanitize_bruker_handle_som_tagg():
     """Med handle skal taggen bli @demo-labs: det er strengen LinkedINs

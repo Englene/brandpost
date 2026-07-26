@@ -1,4 +1,4 @@
-"""publisher: vi eier publiseringen (Oscars valg 22. juli 2026).
+"""publisher: vi eier publiseringen (valget 22. juli 2026).
 
 Ingen nett: linkedin.publish_draft og e-posten mockes.
 """
@@ -52,7 +52,7 @@ def test_publiserer_og_varsler(tmp_path, monkeypatch):
 
 
 def test_for_sent_publiseres_ikke(tmp_path, monkeypatch):
-    """Oscar valgte at VI eier tidspunktet, og da er nedetid en reell risiko.
+    """eieren valgte at VI eier tidspunktet, og da er nedetid en reell risiko.
     Et innlegg som skulle ut i gaar skal ikke plutselig dukke opp i dag."""
     mpath = _manifest(tmp_path, [_draft(1, when="2026-07-22T10:00")])
     kalt = []

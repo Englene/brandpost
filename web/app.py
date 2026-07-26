@@ -53,7 +53,7 @@ templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 _NO_MONTHS = ("januar", "februar", "mars", "april", "mai", "juni", "juli",
               "august", "september", "oktober", "november", "desember")
 
-# Foreslått publiseringstidspunkt i «Aksepter og planlegg» (Oscars valg 22. juli:
+# Foreslått publiseringstidspunkt i «Aksepter og planlegg» (valget 22. juli:
 # kl. 10:00). Må være et kvarter, siden LinkedIns tidsvelger bare tilbyr de.
 _DEFAULT_POST_TIME = "10:00"
 
@@ -227,7 +227,7 @@ def _card_ctx(v: Path, day: str, draft: dict) -> dict:
                            key=lambda q: int(q.stem.split("-")[-1]))
             slides = [_media(q.name, sub=stem) for q in files]
 
-    # Foreslått planleggings-tidspunkt: slot-datoen kl. 10:00 (Oscars valg 22. juli),
+    # Foreslått planleggings-tidspunkt: slot-datoen kl. 10:00 (valget 22. juli),
     # på datetime-local-form for input-feltet. Redigerbart i kortet.
     # Er den alt planlagt, skal feltet vise det VALGTE tidspunktet, ikke forslaget,
     # så «endre» starter fra der du er.
@@ -406,7 +406,7 @@ def api_schedule(request: Request, day: str, nr: int, when: str = Form(...)):
         datetime.strptime(when, "%Y-%m-%dT%H:%M")
     except ValueError:
         return _err("Ugyldig tidspunkt; velg dato og tid på nytt.")
-    # Oscars valg 22. juli: VI eier publiseringen. Knappen lagrer bare tidspunktet;
+    # valget 22. juli: VI eier publiseringen. Knappen lagrer bare tidspunktet;
     # publisher-jobben legger ut via API akkurat da og sender e-post i samme
     # øyeblikk. Derfor er dette et lynkjapt skriv, ikke en nettleser-kjøring som
     # holder forespørselen åpen i minutter (det sultet trådene og hang dashbordet).
@@ -462,7 +462,7 @@ def api_unschedule(request: Request, day: str, nr: int):
 
 @router.post("/api/draft/{day}/{nr}/regen", response_class=HTMLResponse)
 def api_regen_image(request: Request, day: str, nr: int, note: str = Form("")):
-    """Regenerer bildet. `note` er Oscars rettelse («ser ut som en penis», «feil
+    """Regenerer bildet. `note` er eierens rettelse («ser ut som en penis», «feil
     grønnfarge»), som lagres på utkastet og følger med i prompten HVER gang etterpå:
     et problem han har påpekt én gang skal ikke komme tilbake i neste forsøk."""
     v = vault_path()
@@ -552,7 +552,7 @@ def api_publish(request: Request, day: str, nr: int):
     try:
         # Samme vei som den planlagte utsendelsen: publiser, marker, VARSLE. Kalte vi
         # linkedin.publish_draft direkte her, gikk innlegget ut uten e-post (feilen
-        # Oscar fant 23. juli).
+        # eieren fant 23. juli).
         res = pubmod.publiser_ett(mpath, manifest, idx, draft, vault=v)
     except Exception as e:
         return _err(f"Publisering feilet: {e}")
@@ -610,7 +610,7 @@ def _slettbare(merke: str) -> list[dict]:
 @router.get("/api/purge/preview", response_class=HTMLResponse)
 def api_purge_preview(request: Request, brand: str | None = None):
     """Vis den EKSAKTE lista over hva som ville blitt slettet, før noe skjer.
-    Masse-sletting uten liste er ikke lov: Oscar skal se hva han sier ja til."""
+    Masse-sletting uten liste er ikke lov: eieren skal se hva han sier ja til."""
     merke = merke_valg(brand)
     return templates.TemplateResponse(request, "some/purge.html",
                                       {"rader": _slettbare(merke), "merke": merke,
@@ -619,7 +619,7 @@ def api_purge_preview(request: Request, brand: str | None = None):
 
 @router.post("/api/purge", response_class=HTMLResponse)
 def api_purge(request: Request, brand: str | None = None, antall: int = Form(-1)):
-    """Slett alt upublisert (for valgt selskap). `antall` er tallet Oscar SÅ i lista;
+    """Slett alt upublisert (for valgt selskap). `antall` er tallet eieren SÅ i lista;
     stemmer det ikke lenger, har noe endret seg siden han leste den, og vi avbryter
     heller enn å slette noe han aldri fikk se."""
     merke = merke_valg(brand)

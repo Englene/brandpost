@@ -577,7 +577,7 @@ MAX_CORRECTIONS = 5
 
 
 def with_corrections(motif: str, corrections) -> str:
-    """Legg Oscars rettelser («ser ut som en penis», «feil grønnfarge») bakerst i
+    """Legg eierens rettelser («ser ut som en penis», «feil grønnfarge») bakerst i
     motiv-prompten. ALLE rettelsene følger med hver gang, ikke bare den nyeste:
     ellers kommer et problem han allerede har påpekt tilbake ved neste forsøk.
     Nyeste sist, og bare de siste få, så prompten ikke drukner i historikk."""

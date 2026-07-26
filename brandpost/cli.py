@@ -147,7 +147,7 @@ def _sanitize_spec(spec: dict, *, brand_name: str, handle: str = "",
                    wordmark: str = "") -> None:
     """Muterer spec: fjerner tankestreker overalt, og i `body`: bytt selskaps-URL
     med @-tagg og flytt alle andre URL-er til `kilder` (lenker i innlegget kutter
-    rekkevidden; kildene er for Oscar, ikke publikum).
+    rekkevidden; kildene er for deg, ikke publikum).
 
     `handle` er merkets LinkedIn-handle (f.eks. «demo-labs»). Taggen skrives da
     som @handle, som er det LinkedINs mention-liste faktisk slår opp på; uten
@@ -445,7 +445,7 @@ prising eller interne tall. Ingen emoji/hashtags i selve kortet.
 ═══ KILDEKRAV ═══
 Hver tallpåstand og hvert faktautsagn i utkastet skal ha en linje i `kilder`:
 «påstand → kilde» (URL fra nettsøk, eller «produktfakta»/«intern statistikk 72 627
-søknader» for egne tall). Kildene vises KUN for Oscar (e-post + dashbord), aldri i
+søknader» for egne tall). Kildene vises KUN for deg (e-post + dashbord), aldri i
 innlegget. Tomt bare når utkastet ikke påstår noe faktisk.
 
 ═══ DESIGNSTIL ═══
@@ -500,7 +500,7 @@ def cmd_run(args) -> int:
     brand = brandkit.load_brand(args.brand)
     ctx = ctxmod.gather_context(vault, days=args.days)
     # Kun det som ER ute (publisert/planlagt) sperres; foreslåtte-men-aldri-brukte
-    # vinkler går tilbake i idébanken (Oscars retting 22. juli).
+    # vinkler går tilbake i idébanken (rettingen 22. juli).
     angles = store.used_angles(vault)
     lessons = store.read_lessons(vault)
     coverage = store.pillar_coverage(vault, brandkit.pillar_ids(brand))
@@ -534,7 +534,7 @@ def cmd_run(args) -> int:
             + json.dumps(angles, ensure_ascii=False)
             + ("\n\nLÆRDOMMER (hva som har funket, bruk det):\n" + lessons if lessons else "")
             + slot_block
-            + "\n\nVARIASJON (Oscars retting 22. juli): bytt ÅPNINGSGREP mellom "
+            + "\n\nVARIASJON (rettingen 22. juli): bytt ÅPNINGSGREP mellom "
               "utkastene. Ikke la flere innlegg starte med samme setningsform. "
               "Veksle mellom: et konkret tall, en ekte situasjon fra en søknad, et "
               "tydelig standpunkt, en presis definisjon, eller en observasjon om "

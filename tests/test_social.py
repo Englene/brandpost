@@ -220,7 +220,7 @@ def test_minimal_profile_degrades_gracefully():
     b = brandkit.load_brand("minimal")
     assert b.enabled is False                # dvalende -> ikke i enabled_brands()
     assert "minimal" not in brandkit.enabled_brands()
-    assert b.pillars == ()                   # pilarer er Oscars valg, ikke motorens
+    assert b.pillars == ()                   # pilarer er valget, ikke motorens
     assert brandkit.voice_guide(b)           # faller til innbakt fallback, ikke tom
     assert "minimal" in brandkit.available_brands()
 

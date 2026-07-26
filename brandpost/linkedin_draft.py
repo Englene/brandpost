@@ -3,7 +3,7 @@
 API-et har ingen utkast (se linkedin.py: «PUBLISHED is the only accepted field»),
 så dette er nettleser-automatisering (Playwright) mot en manuelt innlogget økt:
 åpne firmasidas komposer, lim inn tekst, legg ved bildet, lukk komposeren og velg
-«Lagre som utkast». Oscar reviewer, redigerer og publiserer selv i LinkedIn.
+«Lagre som utkast». eieren reviewer, redigerer og publiserer selv i LinkedIn.
 
 Lover og valg:
 - Publiserer ALDRI. Verktøyet klikker aldri «Publiser»; eneste stiendring i
@@ -14,7 +14,7 @@ Lover og valg:
   ser aldri passord. Nettleserprofilen bor lokalt (aldri i den synkede vaulten).
 - Heads-up (ærlig): LinkedIns brukeravtale liker ikke automatisering. Volumet
   her er 2-3 utkast i uka på egen konto, uten publisering; risikoen er lav,
-  men den er Oscars informerte valg (22. juli 2026).
+  men den er eierens informerte valg (22. juli 2026).
 
 Selektorer er norsk/engelsk-tolerante (regex på tilgjengelighetsnavn), for
 LinkedIn bytter språk etter kontoinnstilling.
@@ -497,7 +497,7 @@ def save_drafts(vault: Path, *, date: str | None = None, nr: int | None = None,
 # LinkedIn-API-ets socialMetadata krever scope r_organization_social (ikke
 # godkjent ennå, se linkedin.py). Med en innlogget økt kan vi i stedet lese
 # firmasidas egen innleggsliste: hvert innlegg har data-urn = aktivitets-URN,
-# og teksten står i elementet. Da slipper Oscar å lime inn URL-er manuelt.
+# og teksten står i elementet. Da slipper eieren å lime inn URL-er manuelt.
 
 def posts_url() -> str:
     """Firmasidas offentlige innleggsliste, utledet fra admin-URL-en i .env."""

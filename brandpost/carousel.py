@@ -34,7 +34,7 @@ def forside_motiv(spec: dict, brand: Brand):
 
     Bevisst kun forsiden: den stopper scrollen, mens åtte uavhengig genererte bilder
     lett leser som åtte ulike serier. Samme motor og samme kontrakt som postene, så
-    AI-delen ser typografisk ut (Oscars krav 25. juli 2026)."""
+    AI-delen ser typografisk ut (kravet 25. juli 2026)."""
     if not (spec.get("motif") or spec.get("image_prompt")):
         return None
     return render.engine_content(spec, brand, slides.SIZE_PORTRAIT)
@@ -158,7 +158,7 @@ def omskriv_slides(draft: dict, brand: Brand, *, rettelser: list[str] | None = N
     {tittel, slides}. Ett tekstkall, null bildekall.
 
     Rettelsene sendes med i sin helhet hver gang, ikke bare den nyeste, av samme
-    grunn som for bildene: et problem Oscar har påpekt skal ikke komme tilbake."""
+    grunn som for bildene: et problem du har påpekt skal ikke komme tilbake."""
     from . import model as loop_model
     from . import brandkit as bk
 

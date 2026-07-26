@@ -8,7 +8,7 @@ Modell-id-er drifter, så de er env-styrte:
   GEMINI_API_KEY             nøkkel fra https://aistudio.google.com/apikey
 
 generate_image() sender bilde-prompten + merkevare-referansebilder (logo + 1-2 av
-Oscars eksisterende innlegg fra assets/refs/) for visuell konsistens, og henter ut
+egne tidligere innlegg, hvis du legger dem i brands/<merke>/media/refs/) og henter ut
 PNG-bytene fra svaret. read_text_back() ber en billig visjonsmodell lese teksten i
 et generert bilde, brukt av render.py til å fange feilstavet norsk.
 """

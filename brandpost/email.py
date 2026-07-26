@@ -5,7 +5,7 @@ wrap_document har et mørkt Dagsbrev-tema, så vi bygger en egen LYS merkevare-m
 (sand bakgrunn, mørkegrønn serif-aktig headline) så eposten ser ut som produktet.
 
 Hvert utkast vises som: bildet inline, klar-til-å-poste LinkedIn-tekst, og en kort
-«hvorfor nå»-begrunnelse. Oscar poster selv etter gjennomsyn (propose-only).
+«hvorfor nå»-begrunnelse. du poster selv etter gjennomsyn (propose-only).
 """
 
 from __future__ import annotations
