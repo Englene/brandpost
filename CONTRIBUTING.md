@@ -1,19 +1,20 @@
-# Bidrag
+# Contributing
 
-Dette er et verktøy noen bygde for seg selv og la ut fordi det kan være nyttig for
-andre. Det er ikke et produkt, og det følger ingen støtte med.
+This is a tool someone built for themselves and published because it might be
+useful to others. It is not a product, and no support comes with it.
 
-**Forventninger, så du slipper å gjette:**
+**Expectations, so you do not have to guess:**
 
-- Issues leses, men kan bli liggende. Ingen svartid er lovet.
-- Pull requests er velkomne. Små og fokuserte går fortest gjennom.
-- Kodekommentarene er på norsk. Det er ikke prinsipielt, bare slik det ble.
-- Testene skal være grønne uten nett, uten API-nøkler og uten arbeidsmappe.
-  Krever endringen din noe av de tre, hører den hjemme bak et flagg.
+- Issues get read, but may sit for a while. No response time is promised.
+- Pull requests are welcome. Small and focused move fastest.
+- Code comments are in Norwegian. Not a principle, just how it happened. User-facing
+  documentation is in English and Norwegian.
+- Tests must be green without network access, without API keys and without a
+  workspace. If your change needs any of those three, it belongs behind a flag.
 
-**Én ting som ikke tas inn:** noe som gjør at systemet kan publisere uten et
-menneskelig klikk. Hele designet hviler på at et menneske ser på innholdet før det
-går ut i verden med et firmanavn på.
+**One thing that will not be merged:** anything that lets the system publish without
+a human click. The whole design rests on a person seeing the content before it goes
+out into the world with a company name on it.
 
 ```bash
 python -m pytest -q

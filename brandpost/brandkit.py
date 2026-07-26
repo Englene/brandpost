@@ -3,13 +3,14 @@
 Hvert merke er en mappe under `brands/<key>/`:
 
   profile.toml                    maskin-tokens (palett-hex, fonter, media-stier, pilarer, enabled)
-  merkevare/designstil.md         designstil-prosa (til bilde-hjernen)
-  merkevare/skrivestil.md         stemme + regler
-  merkevare/arketype.md           merke-arketype/personlighet
-  merkevare/strategi.md           posisjonering + publikum + innholdspilarene (rik prosa)
-  bedrift/om-oss.md               om selskapet
-  bedrift/produkter.md            produkt + faktakuler (mates til hjernen som «produktfakta»)
-  bedrift/innholdspreferanser.md  miks, kadens, hva vi unngår, HARD-sperrene
+  voice/design.md          visuell stil (til bilde-hjernen)
+  voice/writing.md         stemme + regler
+  voice/archetype.md       merke-arketype/personlighet
+  voice/strategy.md        posisjonering + publikum + innholdspilarene
+  company/about.md         om selskapet
+  company/products.md      produkt + faktakuler (mates til hjernen som «produktfakta»)
+  company/rules.md         miks, kadens, hva vi unngår, HARD-sperrene
+  (norske navn merkevare/ og bedrift/ godtas fortsatt)
   media/logo.png tilda.png refs/  merke-spesifikke bilder
 
 Prosa-seksjonene er KUN til hjernen (cli.py). Renderer/prompts bruker bare de
@@ -90,6 +91,16 @@ class Brand:
 # Profil-lasting
 # ───────────────────────────────────────────────────────────
 
+def _md(base: Path, *navn: str) -> str:
+    """Første fil som finnes, av flere navn. Lar engelske navn være standarden uten
+    å brekke profiler som allerede bruker de norske."""
+    for n in navn:
+        tekst = _read_md(base, n)
+        if tekst:
+            return tekst
+    return ""
+
+
 def _read_md(base: Path, name: str) -> str:
     p = base / name
     if p.exists():
@@ -123,7 +134,10 @@ def _load_profile(key: str) -> Brand:
         Pillar(id=str(p["id"]), label=str(p.get("label", p["id"])), desc=str(p.get("desc", "")))
         for p in (data.get("pillar") or []) if p.get("id")
     )
-    m, b = d / "merkevare", d / "bedrift"
+    # Engelske navn er standard; de norske godtas fortsatt, så en profil laget før
+    # navnebyttet ikke slutter å virke.
+    m = d / "voice" if (d / "voice").is_dir() else d / "merkevare"
+    b = d / "company" if (d / "company").is_dir() else d / "bedrift"
     return Brand(
         key=str(data.get("key", key)),
         name=str(data["name"]),
@@ -140,13 +154,13 @@ def _load_profile(key: str) -> Brand:
         linkedin_org_urn=str((data.get("linkedin") or {}).get("org_urn", "")).strip(),
         linkedin_handle=str((data.get("linkedin") or {}).get("handle", "")).strip().lstrip("@"),
         language=str(data.get("language", "no")).strip() or "no",
-        voice=_read_md(m, "skrivestil.md"),
-        designstil=_read_md(m, "designstil.md"),
-        arketype=_read_md(m, "arketype.md"),
-        strategi=_read_md(m, "strategi.md"),
-        om_oss=_read_md(b, "om-oss.md"),
-        produkter=_read_md(b, "produkter.md"),
-        innholdspreferanser=_read_md(b, "innholdspreferanser.md"),
+        voice=_md(m, "writing.md", "skrivestil.md"),
+        designstil=_md(m, "design.md", "designstil.md"),
+        arketype=_md(m, "archetype.md", "arketype.md"),
+        strategi=_md(m, "strategy.md", "strategi.md"),
+        om_oss=_md(b, "about.md", "om-oss.md"),
+        produkter=_md(b, "products.md", "produkter.md"),
+        innholdspreferanser=_md(b, "rules.md", "innholdspreferanser.md"),
         pillars=pillars,
     )
 

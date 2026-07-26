@@ -1,188 +1,192 @@
 # brandpost
 
-Et selvhostet system for å lage LinkedIn-innhold til en firmaside: det foreslår
-innlegg, tegner bildene, og publiserer først når du har sagt ja.
+A self-hosted system for making LinkedIn content for a company page: it proposes
+posts, draws the images, and publishes only after you say yes.
 
-Du fyller ut merkevaren din i noen tekstfiler. Motoren bruker dem til å skrive
-innlegg og tegne kort som ser ut som deg. Du godkjenner i et dashbord. Ingenting
-går ut uten et klikk.
+You describe your brand in a few text files. The engine uses them to write posts
+and render cards that look like you. You approve in a local dashboard. Nothing
+goes out without a click.
 
-> **English:** self-hosted LinkedIn content engine for company pages. Brand voice
-> lives in plain text files, posts are generated and reviewed in a local dashboard,
-> and nothing publishes without an explicit approval. The code comments and the
-> default brand are Norwegian; set `language` in your brand profile to change the
-> language of generated posts.
+**[Norsk versjon av denne fila](README.no.md)**
 
----
-
-## Les dette først
-
-**Nettleser-automatisering av LinkedIn er i strid med brukeravtalen deres.** Denne
-kildekoden inneholder en Playwright-vei som logger inn som deg og lagrer utkast.
-Den finnes fordi API-et ikke kan lage utkast, og den er nyttig, men den er ikke uten
-risiko: kontoen din kan i verste fall begrenses. Du velger selv om du bruker den.
-API-veien er innenfor avtalen. Se [nettleser mot API](#nettleser-mot-api) under.
-
-**Ingenting publiseres av seg selv.** Publisering er avslått til du setter
-`LINKEDIN_ENABLED=1`, og selv da skjer det bare når du trykker eller planlegger noe.
+> **On language:** the code comments are in Norwegian, because that is where this
+> came from. Everything you need to *use* the project exists in both English and
+> Norwegian. Set `language` in your brand profile to choose what language your
+> posts are written in; the setup prompt will interview you in whichever language
+> you write to it.
 
 ---
 
-## Kom i gang
+## Read this first
+
+**Browser automation of LinkedIn violates their user agreement.** This repo
+includes a Playwright path that logs in as you and saves drafts. It exists because
+the API cannot create drafts, and it is genuinely useful, but it is not without
+risk: your account could be restricted. That is your call to make. The API path is
+within the agreement. See [browser vs API](#browser-vs-api) below.
+
+**Nothing publishes on its own.** Publishing is off until you set
+`LINKEDIN_ENABLED=1`, and even then only when you click or schedule something.
+
+---
+
+## Getting started
 
 ```bash
-git clone <dette-repoet> brandpost && cd brandpost
+git clone https://github.com/Englene/brandpost && cd brandpost
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # fyll inn minst ANTHROPIC_API_KEY + én bildenøkkel
+cp .env.example .env        # fill in at least ANTHROPIC_API_KEY + one image key
 ```
 
-Har du Claude Code-abonnement, kan du hoppe over `ANTHROPIC_API_KEY` og sette
-`BRANDPOST_MODEL_BACKEND=cli` i stedet. Da koster tekstgenereringen ingenting
-ekstra. En bildenøkkel trengs uansett hvis du vil ha motiver; uten den blir alle
-kortene typografi-drevne, som også ser bra ut.
+If you have a Claude Code subscription you can skip `ANTHROPIC_API_KEY` and set
+`BRANDPOST_MODEL_BACKEND=cli` instead, which costs nothing extra for text. You
+still need an image key for illustrations; without one every card falls back to
+typography, which also looks good.
 
-Lag ditt eget merke:
+Create your own brand:
 
 ```bash
-cp -R brandpost/brands/demo brandpost/brands/mitt-firma
+cp -R brandpost/brands/demo brandpost/brands/my-company
 ```
 
-Åpne `brandpost/brands/mitt-firma/profile.toml` og bytt navn, farger og pilarer.
-Skriv deretter om markdown-filene i `merkevare/` og `bedrift/`. **Det er de to
-tingene som avgjør kvaliteten**: motoren kan ikke gjette hva selskapet ditt mener.
+Open `brandpost/brands/my-company/profile.toml` and change the name, colours and
+pillars. Then rewrite the markdown files in `voice/` and `company/`. **Those two
+decide the quality.** The engine cannot guess what your company actually thinks.
 
-Generer og se på resultatet:
+Generate and look at the result:
 
 ```bash
-python -m brandpost.cli run --brand mitt-firma
+python -m brandpost.cli run --brand my-company
 python main.py                      # http://localhost:5050/some
 ```
 
-Utkastene havner i `workspace/`. Setter du `BRANDPOST_WORKSPACE` et sted, må den
-peke samme sted når du starter dashbordet, ellers ser du en tom side.
+Drafts land in `workspace/`. If you point `BRANDPOST_WORKSPACE` somewhere else, it
+has to point at the same place when you start the dashboard, or you will see an
+empty page.
 
-Har du ikke lyst til å gjøre dette for hånd, se [agent/](agent/): der ligger en
-prompt du limer inn i Claude Code eller Codex, som intervjuer deg og fyller ut
-filene for deg.
+Rather not do this by hand? See [agent/](agent/): a prompt you paste into Claude
+Code or Codex that interviews you and fills in the files for you.
 
 ---
 
-## Slik henger det sammen
+## How it fits together
 
 ```
 workspace/notes/*.md ──┐
-             ├──► hjernen (tekstmodell) ──► forslag ──► dashbord ──► LinkedIn
-merkevare ───┘         │                                   ▲
-                       └──► bildemotor ──► kort            │
-                                                     du godkjenner
+                       ├──► brain (text model) ──► drafts ──► dashboard ──► LinkedIn
+brand files ───────────┘         │                              ▲
+                                 └──► image model ──► cards     │
+                                                          you approve
 ```
 
-- **Merkevaren** er tekstfiler, ikke kode. Ingen kodeendringer for et nytt merke.
-- **Notatene** er valgfrie. Legg markdown i `workspace/notes/`, så bruker hjernen
-  det som råstoff. Tom mappe fungerer, det blir bare mer generisk.
-- **Bildene** lages i to lag: modellen tegner KUN innholdet i merkefargene, og
-  koden legger overskrift, logo og ordmerke oppå. Det er grepet som gjør at
-  AI-delen ser ut som typografi og ikke som et innlimt bilde.
-- **Planen** fordeler temaer utover uka og roterer mellom pilarene dine, så du ikke
-  skriver om det samme hver gang.
+- **The brand** is text files, not code. No code changes for a new brand.
+- **Notes are optional.** Drop markdown in `workspace/notes/` and the brain uses it
+  as raw material. An empty folder works, the output is just more generic.
+- **Images are made in two layers:** the model draws only the *content* in your
+  brand colours, and code puts the headline, logo and wordmark on top. That split
+  is what makes the AI part read as typography rather than a pasted-in picture.
+- **The plan** spreads topics across the week and rotates through your pillars, so
+  you do not keep writing the same post.
 
 ---
 
-## Nettleser mot API
+## Browser vs API
 
-To veier, og de kan ikke det samme. Dette er hele grunnen til at begge finnes.
+Two paths, and they cannot do the same things. That is the whole reason both exist.
 
-| | API | Nettleser |
+| | API | Browser |
 |---|---|---|
-| Publisere nå | ja | ja |
-| Publisere til avtalt tid | ja, systemet holder tida selv | ja, LinkedIn holder tida |
-| Lage et ekte utkast i LinkedIn | **nei** | ja |
-| Lese hva som er publisert | ja | ja |
-| Innenfor brukeravtalen | ja | **nei** |
-| Krever godkjenning fra LinkedIn | ja, ukers ventetid | nei |
-| Virker dag én | nei | ja |
+| Publish now | yes | yes |
+| Publish at a set time | yes, we hold the clock | yes, LinkedIn holds the clock |
+| Create a real draft in LinkedIn | **no** | yes |
+| Read what has been published | yes | yes |
+| Within the user agreement | yes | **no** |
+| Needs LinkedIn approval | yes, weeks | no |
+| Works on day one | no | yes |
 
-API-et godtar bare `PUBLISHED` når et innlegg opprettes. Det finnes ingen
-utkast-tilstand. Vil du at et utkast skal ligge i LinkedIn og vente på deg der,
-er nettleser-veien eneste mulighet.
+The API only accepts `PUBLISHED` when a post is created. There is no draft state.
+If you want a draft sitting in LinkedIn waiting for you, the browser path is the
+only option.
 
-De to koordineres: et innlegg som er planlagt inne i LinkedIn merkes, og den
-automatiske publiseringen rører det aldri. Uten det ville samme innlegg gått ut
-to ganger, uten at noe så ut som en feil.
+The two are coordinated: a post scheduled inside LinkedIn is marked, and the
+automatic publisher never touches it. Without that, the same post would go out
+twice and nothing would look like an error.
 
-**Anbefaling:** begynn med nettleser-veien mens du venter på API-tilgang, og bytt
-når den er innvilget.
+**Recommendation:** start with the browser path while you wait for API access, and
+switch once it is granted.
 
 ---
 
-## Skaffe API-tilgang
+## Getting API access
 
-Du trenger **Community Management API** for å publisere til en firmaside. Det
-forutsetter et registrert selskap med en verifisert LinkedIn-side.
+You need the **Community Management API** to publish to a company page. That
+requires a registered company with a verified LinkedIn page.
 
-1. Lag en app på [linkedin.com/developers](https://www.linkedin.com/developers/apps)
-   og knytt den til firmasida di.
-2. Be om produktet **Community Management API**. Regn med dager til uker, og at du
-   må beskrive hva appen skal gjøre.
-3. Legg til `http://localhost:8765/callback` som redirect-URL.
-4. Sett `LINKEDIN_CLIENT_ID` og `LINKEDIN_CLIENT_SECRET` i `.env`.
-5. Kjør engangs-innloggingen:
+1. Create an app at [linkedin.com/developers](https://www.linkedin.com/developers/apps)
+   and associate it with your company page.
+2. Request the **Community Management API** product. Expect days to weeks, and
+   expect to describe what your app will do.
+3. Add `http://localhost:8765/callback` as a redirect URL.
+4. Put `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` in `.env`.
+5. Run the one-time login:
    ```bash
    python -m brandpost.linkedin_auth
    ```
-   Den åpner nettleseren, fanger svaret på localhost, og skriver ut token du limer
-   inn i `.env`.
-6. Finn firmasidas ID i URL-en til admin-panelet
-   (`linkedin.com/company/<ID>/admin/dashboard/`) og sett
-   `org_urn = "urn:li:organization:<ID>"` i merkeprofilen din.
+   It opens your browser, catches the redirect on localhost, and prints the tokens
+   for you to paste into `.env`.
+6. Find your page ID in the admin URL
+   (`linkedin.com/company/<ID>/admin/dashboard/`) and set
+   `org_urn = "urn:li:organization:<ID>"` in your brand profile.
 
-Scopene du trenger er `w_organization_social` (publisere) og
-`r_organization_social` (lese egne innlegg).
+The scopes you need are `w_organization_social` (publish) and
+`r_organization_social` (read your own posts).
 
-**Blir du avslått,** eller har du ingen firmaside: nettleser-veien virker fortsatt,
-og hele genereringsdelen krever ingen LinkedIn-tilgang i det hele tatt.
+**If you are rejected,** or you have no company page: the browser path still works,
+and the whole generation side needs no LinkedIn access at all.
 
 ---
 
-## Automatisk drift
+## Running it automatically
 
-Publiseringen er et mekanisk skript og bør kjøres som en vanlig tidsstyrt jobb, ikke
-som en agent. Den ser etter innlegg du har planlagt og legger ut de som har forfalt:
+Publishing is a mechanical script and belongs in a plain scheduled job, not an
+agent run. It looks for posts you have scheduled and puts out the ones that are due:
 
 ```bash
-python -m brandpost.publisher            # kjør hvert kvarter
-python -m brandpost.publisher --dry-run  # se hva som ville skjedd
+python -m brandpost.publisher            # run every 15 minutes
+python -m brandpost.publisher --dry-run  # show what would happen
 ```
 
-Den nekter å publisere noe som er mer enn seks timer på etterskudd. Et innlegg som
-skulle ut i går skal ikke plutselig dukke opp i dag uten at et menneske ser på det.
+It refuses to publish anything more than six hours late. A post that should have
+gone out yesterday morning should not suddenly appear today without a human
+looking at it.
 
-Selve *genereringen* er derimot skjønn, og passer som en agent-kjøring. Se
-[agent/generering.md](agent/generering.md).
-
----
-
-## Hva som kan bli bedre
-
-Ærlig liste over det som mangler, i den rekkefølgen jeg ville tatt det:
-
-- **Personlig profil som mål.** I dag støttes kun firmasider. Personlig profil er et
-  annet LinkedIn-produkt («Share on LinkedIn», scope `w_member_social`) som er
-  selvbetjent og godkjennes på dager. For de fleste ville det senket terskelen mest.
-- **Ytelsesmåling per pilar.** Engasjementstallene hentes inn, men brukes ikke til å
-  vri innholdet mot det som faktisk virker.
-- **AI-motiv på alle karusell-slides.** I dag får bare forsiden et motiv, fordi åtte
-  uavhengig genererte bilder lett ser ut som åtte ulike serier. Løses det, blir
-  karusellene mye sterkere.
-- **Flere plattformer.** Alt er bygget rundt LinkedIn. Motoren er ikke det.
-- **Kontekst-tilkoblinger.** Notatmappa er bevisst dum. En kobling mot kalender,
-  e-post eller Slack ville gitt hjernen ferskere råstoff. Se
-  [docs/utvidelser.md](docs/utvidelser.md).
-- **Redigering av enkelt-slides** i dashbordet.
+*Generation*, on the other hand, is judgement, and suits an agent run. See
+[agent/generate.md](agent/generate.md).
 
 ---
 
-## Lisens
+## What could be better
 
-MIT. Se [LICENSE](LICENSE).
+An honest list, in the order I would tackle it:
+
+- **Personal profiles as a target.** Only company pages are supported today.
+  Personal posting is a different LinkedIn product ("Share on LinkedIn", scope
+  `w_member_social`) that is self-serve and approved in days. For most people that
+  would lower the barrier the most.
+- **Performance feedback per pillar.** Engagement numbers are collected but never
+  used to steer content toward what actually works.
+- **AI art on every carousel slide.** Today only the cover gets art, because eight
+  independently generated images easily read as eight different series. Solve that
+  and carousels get much stronger.
+- **More platforms.** Everything is built around LinkedIn. The engine is not.
+- **Context connectors.** The notes folder is deliberately dumb. A connector for
+  calendar, email or chat would give the brain fresher material. See
+  [docs/extending.md](docs/extending.md).
+- **Editing individual slides** in the dashboard.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
