@@ -153,7 +153,7 @@ def test_refresh_endpoints_report_cli_result(client, monkeypatch):
 # ── Aksepter og planlegg (LinkedIn-scheduling) ────────────────────────────────
 
 def test_schedule_button_vises_naar_paa(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_DRAFT", "1")
+    monkeypatch.setenv("BRANDPOST_BROWSER_ENABLED", "1")
     day, nr = _make_manifest(tmp_path)
     r = client.get(f"/some/api/drafts?day={day}")
     assert r.status_code == 200
@@ -176,7 +176,7 @@ def test_schedule_skriver_tidspunkt_uten_nettleser(client, tmp_path):
 
 
 def test_schedule_avviser_ugyldig_tidspunkt(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_DRAFT", "1")
+    monkeypatch.setenv("BRANDPOST_BROWSER_ENABLED", "1")
     day, nr = _make_manifest(tmp_path)
     r = client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": "tull"})
     assert "Ugyldig tidspunkt" in r.text

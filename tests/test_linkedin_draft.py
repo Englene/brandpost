@@ -16,7 +16,7 @@ def _draft(nr, *, image="a.png", body="tekst", headline="Overskrift"):
 
 
 def test_pick_velger_nyeste_dag_og_hopper_over_lagrede(tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
     vault = tmp_path / "vault"
     d1 = vault / "socials" / "2026-07-21"
     d2 = vault / "socials" / "2026-07-22"
@@ -34,7 +34,7 @@ def test_pick_velger_nyeste_dag_og_hopper_over_lagrede(tmp_path, monkeypatch):
 
 
 def test_pick_hopper_over_karusell_og_manglende_bilde(tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
     vault = tmp_path / "vault"
     day = vault / "socials" / "2026-07-22"
     _manifest(day, [
@@ -49,7 +49,7 @@ def test_pick_hopper_over_karusell_og_manglende_bilde(tmp_path, monkeypatch):
 
 
 def test_pick_respekterer_nr_og_limit(tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
     vault = tmp_path / "vault"
     day = vault / "socials" / "2026-07-22"
     _manifest(day, [_draft(i, image=f"{i}.png") for i in (1, 2, 3)])
@@ -60,8 +60,8 @@ def test_pick_respekterer_nr_og_limit(tmp_path, monkeypatch):
 
 
 def test_dry_run_uten_flagg_lagrer_ingenting(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
-    monkeypatch.delenv("NOTATER_LINKEDIN_DRAFT", raising=False)
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.delenv("BRANDPOST_BROWSER_ENABLED", raising=False)
     vault = tmp_path / "vault"
     day = vault / "socials" / "2026-07-22"
     _manifest(day, [_draft(1)])
@@ -75,9 +75,9 @@ def test_dry_run_uten_flagg_lagrer_ingenting(tmp_path, monkeypatch, capsys):
 
 
 def test_ekte_kjoring_krever_side_url(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
-    monkeypatch.setenv("NOTATER_LINKEDIN_DRAFT", "1")
-    monkeypatch.delenv("NOTATER_LINKEDIN_PAGE_URL", raising=False)
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_ENABLED", "1")
+    monkeypatch.delenv("BRANDPOST_LINKEDIN_PAGE_URL", raising=False)
     vault = tmp_path / "vault"
     day = vault / "socials" / "2026-07-22"
     _manifest(day, [_draft(1)])
@@ -85,13 +85,13 @@ def test_ekte_kjoring_krever_side_url(tmp_path, monkeypatch, capsys):
 
     rc = ld.save_drafts(vault)
     assert rc == 1
-    assert "NOTATER_LINKEDIN_PAGE_URL" in capsys.readouterr().out
+    assert "BRANDPOST_LINKEDIN_PAGE_URL" in capsys.readouterr().out
 
 
 def test_pick_utleder_filnavn_fra_maskinfremmed_png_path(tmp_path, monkeypatch):
     """Manifestet skrives på Mini med fulle /Users/brukeren-stier; lokalt teller
     bare filnavnet i dags-mappa (regresjonen 22. juli: alt ble hoppet over)."""
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
     vault = tmp_path / "vault"
     day = vault / "socials" / "2026-07-29"
     _manifest(day, [{"nr": 1, "body": "tekst", "headline": "H",
@@ -103,7 +103,7 @@ def test_pick_utleder_filnavn_fra_maskinfremmed_png_path(tmp_path, monkeypatch):
 
 
 def test_ledger_rundtur(tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
     assert ld.read_ledger() == {}
     ld.mark_saved("2026-07-22#1")
     led = ld.read_ledger()
@@ -132,8 +132,8 @@ def test_cli_schedule_avviser_ugyldig_tidspunkt(capsys):
 
 
 def test_schedule_post_uten_utkast_feiler(tmp_path, monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
-    monkeypatch.setenv("NOTATER_LINKEDIN_PAGE_URL", "https://x/company/1/admin/")
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_LINKEDIN_PAGE_URL", "https://x/company/1/admin/")
     from datetime import datetime
     rc = ld.schedule_post(tmp_path / "vault", date="2026-07-29", nr=99,
                           when=datetime(2026, 7, 29, 8, 0), commit=False)
@@ -162,14 +162,14 @@ def test_match_draft_krever_lang_nok_bit():
 
 
 def test_posts_url_utledes_fra_admin_url(monkeypatch):
-    monkeypatch.setenv("NOTATER_LINKEDIN_PAGE_URL",
+    monkeypatch.setenv("BRANDPOST_LINKEDIN_PAGE_URL",
                        "https://www.linkedin.com/company/99001122/admin/")
     assert ld.posts_url() == "https://www.linkedin.com/company/99001122/posts/"
 
 
 def test_sync_published_markerer_treff(tmp_path, monkeypatch):
     from brandpost import store
-    monkeypatch.setenv("NOTATER_LINKEDIN_PROFILE", str(tmp_path / "profil"))
+    monkeypatch.setenv("BRANDPOST_BROWSER_PROFILE", str(tmp_path / "profil"))
     day = tmp_path / "socials" / "2026-07-27"
     day.mkdir(parents=True)
     (day / "manifest.json").write_text(json.dumps({"drafts": [

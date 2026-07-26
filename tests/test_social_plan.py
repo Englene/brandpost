@@ -129,9 +129,9 @@ def test_post_days_er_fire_i_uka():
 
 def test_post_days_kan_overstyres_med_env(monkeypatch):
     """eieren skal kunne prøve daglig uten kodeendring."""
-    monkeypatch.setenv("NOTATER_SOME_POST_DAYS", "0,1,2,3,4")
+    monkeypatch.setenv("BRANDPOST_POST_DAYS", "0,1,2,3,4")
     assert planmod._post_days() == (0, 1, 2, 3, 4)
-    monkeypatch.setenv("NOTATER_SOME_POST_DAYS", "tull")
+    monkeypatch.setenv("BRANDPOST_POST_DAYS", "tull")
     assert planmod._post_days() == (0, 1, 2, 3)       # ugyldig -> default
 
 

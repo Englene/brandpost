@@ -34,8 +34,8 @@ def _post_days() -> tuple[int, ...]:
     Research 22. juli 2026: 2-4 innlegg i uka er referansen for FIRMASIDER, og
     oftere kannibaliserer rekkevidden per innlegg (ett selskap som postet 3x
     sjeldnere fikk 2,2x flere kvalifiserte leads). Fredag er ute: svakest dag
-    for B2B. Overstyr med NOTATER_SOME_POST_DAYS=0,1,2,3,4 for å prøve daglig."""
-    raw = (os.environ.get("NOTATER_SOME_POST_DAYS") or "").strip()
+    for B2B. Overstyr med BRANDPOST_POST_DAYS=0,1,2,3,4 for å prøve daglig."""
+    raw = (os.environ.get("BRANDPOST_POST_DAYS") or "").strip()
     if raw:
         try:
             dager = tuple(sorted({int(x) for x in raw.split(",") if x.strip()}))

@@ -30,7 +30,7 @@ from . import (brandkit, carousel as carouselmod, context as ctxmod,
                email as emailmod, paths, plan as planmod,
                render as rendermod, store)
 
-# Repo-rotens .env (SMTP, GEMINI_API_KEY, NOTATER_SOME_*). Eksplisitt sti så
+# Repo-rotens .env (nøkler og BRANDPOST_*-innstillinger). Eksplisitt sti så
 # routinen finner den uansett arbeidskatalog.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -582,7 +582,7 @@ def main(argv=None) -> int:
 
     p_pul = sub.add_parser("pulse", help="høst Slack-puls til pulse/<dato>.json (read-only)")
     p_pul.add_argument("--days", type=int, default=None,
-                       help="vindu i dager (default NOTATER_SOME_SLACK_DAYS eller 4)")
+                       help="vindu i dager (default 4)")
     p_pul.add_argument("--brand", default="demo")
     p_pul.set_defaults(func=cmd_pulse)
 

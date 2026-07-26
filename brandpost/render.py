@@ -568,8 +568,8 @@ _MOTIV_FRAMES = [  # roteres per innlegg (seq): to-tone-mark i ett bunn-hjørne 
 
 
 def image_backend(spec: dict) -> str:
-    """Velg bildemotor: spec['backend'] eller NOTATER_SOME_IMAGE_BACKEND (default gemini)."""
-    b = (spec.get("backend") or os.environ.get("NOTATER_SOME_IMAGE_BACKEND") or "gemini").strip().lower()
+    """Velg bildemotor: spec['backend'] eller BRANDPOST_IMAGE_BACKEND (default gemini)."""
+    b = (spec.get("backend") or os.environ.get("BRANDPOST_IMAGE_BACKEND") or "gemini").strip().lower()
     return "openai" if b in ("openai", "gpt", "gpt-image", "gpt-image-2") else "gemini"
 
 

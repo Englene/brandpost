@@ -36,7 +36,7 @@ brands/<key>/
    admin-panel (`linkedin.com/company/<ID>/admin/dashboard/`) og skriv den som
    `urn:li:organization:<ID>`. Automatisk oppslag av sidene du er admin på krever
    scopet `r_organization_admin`, som vi ikke har, så URL-en er veien.
-7. Aktiver med `enabled = true`, eller kjør ad hoc: `NOTATER_SOME_TARGETS=<navn>`.
+7. Aktiver med `enabled = true`, eller kjør ad hoc: `BRANDPOST_BRANDS=<navn>`.
 
 ## Maskinlesbart vs prosa
 

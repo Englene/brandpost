@@ -239,9 +239,9 @@ def test_gemini_ber_om_hoyere_opplosning_enn_lerretet(monkeypatch):
     det var dét som gjorde AI-innholdet uskarpt ved siden av Pillow-teksten.
     2K gir 1856x2304, som nedskaleres. Låst fordi 1K ville sett ut som en besparelse."""
     from brandpost import gemini
-    monkeypatch.delenv("NOTATER_SOME_IMAGE_RES", raising=False)
+    monkeypatch.delenv("BRANDPOST_IMAGE_RES", raising=False)
     assert gemini.image_size_hint() == "2K"
-    monkeypatch.setenv("NOTATER_SOME_IMAGE_RES", "4K")
+    monkeypatch.setenv("BRANDPOST_IMAGE_RES", "4K")
     assert gemini.image_size_hint() == "4K"
 
 
@@ -249,7 +249,7 @@ def test_openai_ber_om_hoy_kvalitet(monkeypatch):
     """gpt-image-2 kan ikke gi flere piksler enn 1024x1536, så kvalitet er det eneste
     håndtaket mot uskarphet der."""
     from brandpost import openai_image
-    monkeypatch.delenv("NOTATER_SOME_IMAGE_QUALITY", raising=False)
+    monkeypatch.delenv("BRANDPOST_IMAGE_QUALITY", raising=False)
     assert openai_image.quality() == "high"
 
 

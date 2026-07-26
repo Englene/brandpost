@@ -25,7 +25,9 @@ def test_brand_loads_and_font_resolves():
     b = brandkit.load_brand("demo")
     assert b.name == "Demo Labs"
     assert brandkit.font_path(b.display_font) is not None  # Fraunces vendret i assets/
-    assert brandkit.enabled_brands() == ["demo"]
+    # IKKE == ["demo"]: den som legger til sitt eget merke skal ikke få en rød test.
+    assert "demo" in brandkit.enabled_brands()
+    assert "minimal" not in brandkit.enabled_brands()  # enabled=false holder det ute
 
 
 def test_render_template_is_square_rgb_on_sand():
@@ -55,7 +57,7 @@ def test_render_editorial_falls_back_to_template_without_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("NOTATER_SOME_IMAGE_BACKEND", raising=False)
+    monkeypatch.delenv("BRANDPOST_IMAGE_BACKEND", raising=False)
     spec = {"format": "redaksjonelt", "headline": "Test", "image_prompt": "noe"}
     out = render.render_post(spec, brand=brandkit.load_brand("demo"))
     assert out["how"] == "template-fallback"
@@ -67,7 +69,7 @@ def test_motiv_is_default_when_motif_present(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("NOTATER_SOME_IMAGE_BACKEND", raising=False)
+    monkeypatch.delenv("BRANDPOST_IMAGE_BACKEND", raising=False)
     b = brandkit.load_brand("demo")
     out = render.render_post({"headline": "Test", "motif": "en tom pidestall i grønt"}, brand=b)
     assert out["format"] == "motiv"

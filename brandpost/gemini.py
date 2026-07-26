@@ -3,8 +3,8 @@
 Bruker den nye samlede SDK-en `google-genai` (import: `from google import genai`).
 Modell-id-er drifter, så de er env-styrte:
 
-  NOTATER_SOME_IMAGE_MODEL   default 'gemini-3-pro-image-preview'  (Nano Banana Pro)
-  NOTATER_SOME_VISION_MODEL  default 'gemini-2.5-flash'           (tekst-tilbakelesing)
+  BRANDPOST_IMAGE_MODEL   default 'gemini-3-pro-image-preview'  (Nano Banana Pro)
+  BRANDPOST_VISION_MODEL  default 'gemini-2.5-flash'           (tekst-tilbakelesing)
   GEMINI_API_KEY             nøkkel fra https://aistudio.google.com/apikey
 
 generate_image() sender bilde-prompten + merkevare-referansebilder (logo + 1-2 av
@@ -38,7 +38,7 @@ def _client():
 
 
 def image_model() -> str:
-    return os.environ.get("NOTATER_SOME_IMAGE_MODEL", "gemini-3-pro-image-preview")
+    return os.environ.get("BRANDPOST_IMAGE_MODEL", "gemini-3-pro-image-preview")
 
 
 # Motoren returnerte 928x1152 uten dette, mens lerretet er 1080x1350: alt AI-innhold
@@ -46,7 +46,7 @@ def image_model() -> str:
 # ved siden av den knivskarpe Pillow-typografien (målt 25. juli 2026).
 # 2K gir 1856x2304, altså nedskalering, som er skarpt.
 def image_size_hint() -> str:
-    return (os.environ.get("NOTATER_SOME_IMAGE_RES") or "2K").strip() or "2K"
+    return (os.environ.get("BRANDPOST_IMAGE_RES") or "2K").strip() or "2K"
 
 
 def _aspect_ratio(size) -> str:
@@ -73,7 +73,7 @@ def _bilde_config(size):
 
 
 def vision_model() -> str:
-    return os.environ.get("NOTATER_SOME_VISION_MODEL", "gemini-2.5-flash")
+    return os.environ.get("BRANDPOST_VISION_MODEL", "gemini-2.5-flash")
 
 
 def _labeled_refs(brand: Brand, *, use_tilda: bool = False) -> list:

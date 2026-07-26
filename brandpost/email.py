@@ -158,11 +158,11 @@ def build_some_email(drafts: list[dict], *, brand_name: str = "Demo Labs") -> tu
 
 def send_drafts(drafts: list[dict], *, brand_name: str = "Demo Labs",
                 dry_run: bool | None = None, vault: Path | None = None) -> dict:
-    """Bygg og send SoMe-eposten. dry_run=None => følg NOTATER_MAIL_ENABLED."""
+    """Bygg og send SoMe-eposten. dry_run=None => følg BRANDPOST_MAIL_ENABLED."""
     if not drafts:
         return {"sent": False, "reason": "ingen utkast"}
     subject, doc, inline, attachments = build_some_email(drafts, brand_name=brand_name)
-    to = os.environ.get("NOTATER_SOME_MAIL_TO") or None  # None => mailer bruker NOTATER_MAIL_TO
+    to = os.environ.get("BRANDPOST_MAIL_TO") or None  # None => mailer velger mottaker
     return send_email(subject, doc, to=to, dry_run=dry_run, vault=vault,
                       preheader=f"{len(drafts)} SoMe-utkast", inline_images=inline,
                       attachments=attachments)

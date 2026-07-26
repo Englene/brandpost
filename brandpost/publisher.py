@@ -41,7 +41,7 @@ except Exception:  # noqa: BLE001
 
 # Hvor sent er for sent? Kortere enn et døgn, så en natt med nedetid ikke gir
 # et morgeninnlegg på kvelden, men langt nok til å tåle en treg oppstart.
-CATCHUP_LIMIT_H = float(os.environ.get("NOTATER_SOME_CATCHUP_H") or "6")
+CATCHUP_LIMIT_H = float(os.environ.get("BRANDPOST_CATCHUP_H") or "6")
 
 
 def linkedin_owns(draft: dict) -> bool:

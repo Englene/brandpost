@@ -4,7 +4,7 @@ Bruker samme brand-brief (prompts.brand_card_prompt) og de samme merkevare-
 referansebildene (logo, Tilda, eksempler) via images.edit, så en sammenligning
 mot Gemini blir rettferdig. Faller til ren images.generate hvis edit ikke tar refs.
 
-Nøkkel: OPENAI_API_KEY i .env. Modell: NOTATER_SOME_OPENAI_MODEL (default gpt-image-2).
+Nøkkel: OPENAI_API_KEY i .env. Modell: BRANDPOST_OPENAI_MODEL (default gpt-image-2).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ class OpenAIImageError(RuntimeError):
 
 
 def model() -> str:
-    return os.environ.get("NOTATER_SOME_OPENAI_MODEL", "gpt-image-2")
+    return os.environ.get("BRANDPOST_OPENAI_MODEL", "gpt-image-2")
 
 
 def _size(size) -> str:
@@ -32,7 +32,7 @@ def _size(size) -> str:
 def quality() -> str:
     """Detaljnivå. Motoren kan ikke gi flere piksler enn 1024x1536, så kvalitet er
     det eneste håndtaket vi har mot uskarphet her (Gemini kan derimot gi 2K)."""
-    return (os.environ.get("NOTATER_SOME_IMAGE_QUALITY") or "high").strip() or "high"
+    return (os.environ.get("BRANDPOST_IMAGE_QUALITY") or "high").strip() or "high"
 
 
 def available() -> bool:

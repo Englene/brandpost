@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:  # speiler server.py: gjør brandpost importerbar
 import os  # noqa: E402
 
 # Web-tjenesten (launchd) starter uten repoets .env i miljøet, så env-gatede
-# handlinger som LinkedIn-planlegging (NOTATER_LINKEDIN_DRAFT/PAGE_URL) ikke ville
+# handlinger som LinkedIn-planlegging (BRANDPOST_BROWSER_ENABLED/PAGE_URL) ikke ville
 # se flaggene. Last .env her; overstyrer ALDRI variabler som alt er satt, og
 # planlegg-subprosessen arver miljøet.
 try:  # python-dotenv er alt en avhengighet (enrich/github/loops m.fl.)
@@ -59,7 +59,7 @@ _DEFAULT_POST_TIME = "10:00"
 
 
 def _suggest_time() -> str:
-    t = (os.environ.get("NOTATER_SOME_POST_TIME") or _DEFAULT_POST_TIME).strip()
+    t = (os.environ.get("BRANDPOST_POST_TIME") or _DEFAULT_POST_TIME).strip()
     return t if re.fullmatch(r"\d{2}:(00|15|30|45)", t) else _DEFAULT_POST_TIME
 
 

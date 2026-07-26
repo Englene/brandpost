@@ -8,7 +8,7 @@ så dette er nettleser-automatisering (Playwright) mot en manuelt innlogget økt
 Lover og valg:
 - Publiserer ALDRI. Verktøyet klikker aldri «Publiser»; eneste stiendring i
   LinkedIn er et lagret utkast. Svarstyrt publisering (linkedin.py) er urørt.
-- NOTATER_LINKEDIN_DRAFT=1 kreves for ekte kjøring; alt annet er dry-run som
+- BRANDPOST_BROWSER_ENABLED=1 kreves for ekte kjøring; alt annet er dry-run som
   bare skriver hva som VILLE blitt lagret.
 - Innlogging gjør et menneske ÉN gang med `--setup` (synlig nettleser); koden
   ser aldri passord. Nettleserprofilen bor lokalt (aldri i den synkede vaulten).
@@ -48,16 +48,16 @@ RE_EDITOR = re.compile(r"tekstredigering|text editor|hva vil du snakke om|what d
 
 
 def profile_dir() -> Path:
-    return Path(os.environ.get("NOTATER_LINKEDIN_PROFILE") or DEFAULT_PROFILE).expanduser()
+    return Path(os.environ.get("BRANDPOST_BROWSER_PROFILE") or DEFAULT_PROFILE).expanduser()
 
 
 def page_url() -> str:
     """Firmasidas URL (helst admin-visningen, da komponerer boksen SOM sida)."""
-    return (os.environ.get("NOTATER_LINKEDIN_PAGE_URL") or "").strip()
+    return (os.environ.get("BRANDPOST_LINKEDIN_PAGE_URL") or "").strip()
 
 
 def enabled() -> bool:
-    return os.environ.get("NOTATER_LINKEDIN_DRAFT") == "1"
+    return os.environ.get("BRANDPOST_BROWSER_ENABLED") == "1"
 
 
 # ── ledger: hvilke utkast er alt lagret (lokal fil, aldri i vaulten) ──────────
@@ -393,7 +393,7 @@ def _schedule_one(page, draft: dict, when: datetime, *, commit: bool) -> str:
 def schedule_post(vault: Path, *, date: str, nr: int, when: datetime,
                   headless: bool = True, commit: bool | None = None) -> int:
     """Planlegg ETT utkast som native LinkedIn-planlagt innlegg til `when`.
-    commit=None → styres av enabled() (NOTATER_LINKEDIN_DRAFT=1); commit=False
+    commit=None → styres av enabled() (BRANDPOST_BROWSER_ENABLED=1); commit=False
     er alltid tørrkjøring (fasit-sjekk, ingen planlegging)."""
     if commit is None:
         commit = enabled()
@@ -403,7 +403,7 @@ def schedule_post(vault: Path, *, date: str, nr: int, when: datetime,
         return 1
     draft = drafts[0]
     if not page_url():
-        print("NOTATER_LINKEDIN_PAGE_URL mangler (firmasidas URL).")
+        print("BRANDPOST_LINKEDIN_PAGE_URL mangler (firmasidas URL).")
         return 1
     if not commit:
         print(f"  🧪 tørrkjøring: ville planlagt {draft['key']} «{draft['headline']}» "
@@ -457,11 +457,11 @@ def save_drafts(vault: Path, *, date: str | None = None, nr: int | None = None,
         return 0
     if not enabled():
         for d in drafts:
-            print(f"  🧪 dry-run (NOTATER_LINKEDIN_DRAFT=0): ville lagret utkast "
+            print(f"  🧪 dry-run (BRANDPOST_BROWSER_ENABLED=0): ville lagret utkast "
                   f"{d['key']} «{d['headline']}» + {d['image'].name}")
         return 0
     if not page_url():
-        print("NOTATER_LINKEDIN_PAGE_URL mangler (firmasidas URL). Uten den havner "
+        print("BRANDPOST_LINKEDIN_PAGE_URL mangler (firmasidas URL). Uten den havner "
               "utkastet på personprofilen; sett den i .env.")
         return 1
 

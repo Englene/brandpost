@@ -163,9 +163,9 @@ def available_brands() -> list[str]:
 
 
 def enabled_brands() -> list[str]:
-    """Merker generatoren skal kjøre for. NOTATER_SOME_TARGETS overstyrer (komma-
+    """Merker generatoren skal kjøre for. BRANDPOST_BRANDS overstyrer (komma-
     separert); ellers alle profiler med enabled=true. Faller til ['demo']."""
-    raw = os.environ.get("NOTATER_SOME_TARGETS")
+    raw = os.environ.get("BRANDPOST_BRANDS")
     if raw:
         keys = [k.strip().lower() for k in raw.split(",") if k.strip()]
         return [k for k in keys if (BRANDS_DIR / k / "profile.toml").exists()] or ["demo"]

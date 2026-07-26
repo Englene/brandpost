@@ -3,7 +3,7 @@
 Propose-only-linja er urørt: generatoren foreslår (mail + vault, status "proposed").
 Denne modulen poster ett VALGT utkast NÅR du sier fra, aldri i nattkjøringen.
 
-Trygg default (speiler `mailer` sitt `NOTATER_MAIL_ENABLED`): `LINKEDIN_ENABLED=0`
+Trygg default (speiler `mailer` sitt `BRANDPOST_MAIL_ENABLED`): `LINKEDIN_ENABLED=0`
 → dry-run, som skriver hva som VILLE postes og sender ingenting. Først `=1` poster ekte.
 
 Firmaside = LinkedIn «Community Management API» (scope `w_organization_social`).
