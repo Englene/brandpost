@@ -28,7 +28,41 @@ from pathlib import Path
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 FONTS_DIR = ASSETS / "fonts"
-BRANDS_DIR = Path(__file__).resolve().parent / "brands"
+BUNDLED_BRANDS_DIR = Path(__file__).resolve().parent / "brands"
+
+
+def brand_dirs() -> list[Path]:
+    """Hvor merker letes etter, i prioritert rekkefølge.
+
+    BRANDPOST_BRANDS_DIR (kolon-separert, som PATH) legges FØRST, så dine egne
+    merker vinner over de innebygde ved navnekollisjon. Det er dette som lar
+    merkevaren din, altså strategien, stemmen og logoene, bo i et privat repo
+    mens motoren installeres fra dette: du skal ikke måtte legge forretnings-
+    materialet ditt i en pakke du oppdaterer.
+
+    Uten variabelen oppfører alt seg som før, med demo/ og minimal/ innebygd.
+    """
+    ut: list[Path] = []
+    raw = os.environ.get("BRANDPOST_BRANDS_DIR", "")
+    for del_ in raw.split(os.pathsep):
+        d = del_.strip()
+        if d:
+            ut.append(Path(d).expanduser())
+    ut.append(BUNDLED_BRANDS_DIR)
+    return ut
+
+
+def brand_dir(key: str) -> Path | None:
+    """Første katalog som faktisk har profilen, eller None."""
+    for base in brand_dirs():
+        if (base / key / "profile.toml").exists():
+            return base / key
+    return None
+
+
+# Bakoverkompatibelt navn: pekte på den innebygde katalogen før eksterne merker
+# ble mulige. Bruk brand_dirs()/brand_dir() i ny kode.
+BRANDS_DIR = BUNDLED_BRANDS_DIR
 
 
 # ───────────────────────────────────────────────────────────
@@ -112,11 +146,14 @@ def _read_md(base: Path, name: str) -> str:
 
 
 def _load_profile(key: str) -> Brand:
-    d = BRANDS_DIR / key
-    prof = d / "profile.toml"
-    if not prof.exists():
+    d = brand_dir(key)
+    if d is None:
         avail = ", ".join(available_brands()) or "(ingen)"
-        raise ValueError(f"ukjent merke '{key}' (mangler {prof}; har: {avail})")
+        sett = ", ".join(str(p) for p in brand_dirs())
+        raise ValueError(
+            f"ukjent merke '{key}' (har: {avail}). Lette i: {sett}. "
+            f"Ligger merket ditt et annet sted, sett BRANDPOST_BRANDS_DIR.")
+    prof = d / "profile.toml"
     data = tomllib.loads(prof.read_text(encoding="utf-8"))
 
     pal = Palette(**(data.get("palette") or {}))
@@ -170,10 +207,13 @@ def load_brand(key: str) -> Brand:
 
 
 def available_brands() -> list[str]:
-    """Alle merker med en profil på disk (uansett enabled)."""
-    if not BRANDS_DIR.exists():
-        return []
-    return sorted(p.name for p in BRANDS_DIR.iterdir() if (p / "profile.toml").exists())
+    """Alle merker med en profil på disk (uansett enabled), på tvers av katalogene."""
+    funnet: set[str] = set()
+    for base in brand_dirs():
+        if not base.exists():
+            continue
+        funnet |= {p.name for p in base.iterdir() if (p / "profile.toml").exists()}
+    return sorted(funnet)
 
 
 def enabled_brands() -> list[str]:
@@ -182,7 +222,10 @@ def enabled_brands() -> list[str]:
     raw = os.environ.get("BRANDPOST_BRANDS")
     if raw:
         keys = [k.strip().lower() for k in raw.split(",") if k.strip()]
-        return [k for k in keys if (BRANDS_DIR / k / "profile.toml").exists()] or ["demo"]
+        # brand_dir(), ikke BRANDS_DIR: et merke fra BRANDPOST_BRANDS_DIR skal
+        # kunne stå i BRANDPOST_BRANDS. Ellers ble egne merker stille filtrert
+        # bort og kjøringen falt til demo.
+        return [k for k in keys if brand_dir(k) is not None] or ["demo"]
     out: list[str] = []
     for key in available_brands():
         try:

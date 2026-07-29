@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brandpost"
+version = "1.0.0"
+description = "Selvhostet LinkedIn-innholdsmotor for firmasider: merkevaren din i tekstfiler, forslag og bilder generert lokalt, og ingenting publiseres uten at du sier ja."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Kjernen. Dashbordet og bildemotorene er valgfrie ekstras, så du kan installere
+# brandpost som bibliotek i et eget prosjekt uten å dra inn en webserver.
+dependencies = [
+    "Pillow>=10.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Standard tekstbakende. Trengs ikke med BRANDPOST_MODEL_BACKEND=cli.
+api = ["anthropic>=0.40"]
+web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1", "python-multipart>=0.0.9"]
+gemini = ["google-genai>=1.0"]
+openai = ["openai>=1.40"]
+carousel = ["pypdf>=4.0.0"]
+# Ekte LinkedIn-utkast via nettleser, inkludert LinkedIns egen planlegging.
+browser = ["playwright>=1.44"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+all = [
+    "anthropic>=0.40", "fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1",
+    "python-multipart>=0.0.9", "google-genai>=1.0", "openai>=1.40",
+    "pypdf>=4.0.0", "playwright>=1.44",
+]
+
+[project.scripts]
+brandpost = "brandpost.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Englene/brandpost"
+
+[tool.setuptools.packages.find]
+include = ["brandpost*", "web*"]
+
+[tool.setuptools.package-data]
+brandpost = ["assets/fonts/*", "brands/**/*"]
+web = ["templates/**/*", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

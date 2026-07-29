@@ -70,7 +70,7 @@ def cmd_pulse(args) -> int:
     bestemt Slack-oppsett og hører hjemme hos den som eier de kildene. Skriv din egen
     og legg resultatet i det formatet, så er du koblet på.
     """
-    print("Puls-høsting er ikke med i v1. Se docs/utvidelser.md for formatet "
+    print("Puls-høsting er ikke med i v1. Se docs/extending.md for formatet "
           "socials/pulse/<dato>.json, så plukker hjernen det opp automatisk.")
     return 0
 
@@ -304,19 +304,40 @@ def cmd_send(args) -> int:
 
 # ── publish (LinkedIn firmaside, menneske-gated) ───────────
 
+def _publish_json(payload: dict) -> int:
+    """Skriv NØYAKTIG ett JSON-objekt på stdout, ingenting annet.
+
+    For deg som vil koble publisering til noe annet: en e-postsvar-flyt, en
+    chat-bot, et skript. Exit 0 når kommandoen ble FORSTÅTT, også ved dry-run og
+    «allerede publisert»; exit 1 kun ved bruksfeil eller krasj. Da kan kalleren
+    skille «systemet sa nei» fra «systemet er ødelagt», og si det riktige videre.
+    """
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0 if payload.get("ok") else 1
+
+
 def cmd_publish(args) -> int:
     """Publiser ETT valgt utkast til LinkedIn. Aldri hele batchen, aldri i nattkjøringen.
     Uten --post: lister utkastene så du kan peke. Dry-run til LINKEDIN_ENABLED=1."""
     from . import linkedin as linkedinmod
+    from . import plan as planmod
+    som_json = bool(getattr(args, "json", False))
     vault = _vault(args)
     mpath, manifest = store.load_manifest(vault, getattr(args, "date", None))
     if not manifest:
+        if som_json:
+            return _publish_json({"ok": False, "posted": False,
+                                  "reason": "fant ikke noe manifest å publisere fra"})
         print("  ⚠️  fant ikke noe manifest å publisere fra", file=sys.stderr)
         return 1
+    dag = mpath.parent.name
     drafts = manifest.get("drafts") or []
     sel = getattr(args, "post", None)
     if not sel:  # godkjenn-hvert: du MÅ peke på ett innlegg
-        print(f"  📋 {mpath.parent.name} — velg ett med --post <nr|slug>:")
+        if som_json:
+            return _publish_json({"ok": False, "posted": False, "date": dag,
+                                  "reason": "--post mangler: publisering krever at du peker på ett utkast"})
+        print(f"  📋 {dag} — velg ett med --post <nr|slug>:")
         for i, d in enumerate(drafts, 1):
             st = d.get("status", "proposed")
             url = f"  → {d['linkedin_url']}" if d.get("linkedin_url") else ""
@@ -325,22 +346,51 @@ def cmd_publish(args) -> int:
         return 0
     idx, draft = store.select_draft(manifest, sel)
     if draft is None:
-        print(f"  ⚠️  fant ikke utkast '{sel}' i {mpath.parent.name}", file=sys.stderr)
+        if som_json:
+            # Kommandoen ble forstått, utkastet fantes bare ikke (foreldet nummer).
+            # ok=True, posted=False: kalleren skal si «nr N finnes ikke», ikke «alt er nede».
+            return _publish_json({"ok": True, "posted": False, "date": dag, "nr": sel,
+                                  "reason": f"utkast «{sel}» finnes ikke i {dag}"})
+        print(f"  ⚠️  fant ikke utkast '{sel}' i {dag}", file=sys.stderr)
         return 1
+    felles = {"date": dag, "nr": draft.get("nr", sel),
+              "brand": draft.get("brand", ""),
+              "brand_name": draft.get("brand_name", ""),
+              "headline": draft.get("headline", "")}
     if draft.get("status") == "published":
+        # Idempotens: kjøres kommandoen to ganger, skal innlegget ikke gå ut igjen.
+        if som_json:
+            return _publish_json({"ok": True, "posted": False, "already": True,
+                                  "url": draft.get("linkedin_url", ""),
+                                  "reason": "allerede publisert", **felles})
         print(f"  ⚠️  allerede publisert: {draft.get('linkedin_url', '(ukjent URL)')}")
         return 0
     dry = True if getattr(args, "dry_run", False) else None
     res = linkedinmod.publish_draft(draft, dry_run=dry)
     if res.get("posted"):
         store.mark_published(mpath, manifest, idx, res["url"])
+        # Plan-sloten MÅ følge med. Dashbordet gjorde dette, CLI-en ikke, så en
+        # publisering herfra etterlot kalenderen på «utkast» for et innlegg som
+        # var ute. Nå gjør begge veier det samme.
+        planmod.mark_slot(vault, dag, "publisert",
+                          draft_ref={"manifest": dag, "nr": draft.get("nr", sel)})
+        if som_json:
+            return _publish_json({"ok": True, "posted": True, "dry_run": False,
+                                  "url": res["url"], **felles})
         print(f"  🔗 publisert → {res['url']}")
         return 0
     if res.get("dry_run"):
         who = res.get("preview", {}).get("author", "?")
+        if som_json:
+            return _publish_json({"ok": True, "posted": False, "dry_run": True,
+                                  "reason": "dry-run (LINKEDIN_ENABLED=0), ingenting postet",
+                                  **felles})
         print(f"  🧪 dry-run (LINKEDIN_ENABLED=0): ville postet «{draft.get('headline', '')[:40]}» "
               f"som {who}. Metadata → {res.get('metadata', '')}")
         return 0
+    if som_json:
+        return _publish_json({"ok": True, "posted": False,
+                              "reason": res.get("reason", "ukjent feil"), **felles})
     print(f"  ⚠️  ikke publisert: {res.get('reason', 'ukjent feil')}", file=sys.stderr)
     return 1
 
@@ -625,6 +675,8 @@ def main(argv=None) -> int:
     p_pub.add_argument("--post", default=None,
                        help="hvilket utkast: nummeret fra eposten/lista eller slug/headline-bit")
     p_pub.add_argument("--dry-run", action="store_true", help="tving dry-run uansett LINKEDIN_ENABLED")
+    p_pub.add_argument("--json", action="store_true",
+                       help="ett JSON-objekt på stdout, for å koble publisering til noe annet")
     p_pub.set_defaults(func=cmd_publish)
 
     args = ap.parse_args(argv)

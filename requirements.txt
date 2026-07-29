@@ -19,3 +19,4 @@ openai>=1.40           # gpt-image-2 (alternativ)
 
 # Nettleser-publisering (valgfritt: ekte utkast + LinkedIns egen planlegging)
 playwright>=1.44
+pypdf>=4.0.0            # karusell som LinkedIn-dokumentpost (PDF)
