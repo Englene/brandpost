@@ -27,7 +27,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from . import (brandkit, carousel as carouselmod, context as ctxmod,
-               email as emailmod, paths, plan as planmod,
+               email as emailmod, model, paths, plan as planmod,
                render as rendermod, store)
 
 # Repo-rotens .env (nøkler og BRANDPOST_*-innstillinger). Eksplisitt sti så

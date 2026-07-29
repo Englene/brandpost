@@ -234,3 +234,36 @@ def test_miljoet_vinner_over_env_fila(tmp_path, monkeypatch):
     from brandpost import paths
     paths.load_env()
     assert os.environ["BRANDPOST_TESTNOKKEL"] == "fra-miljoet"
+
+
+# ── CLI-en som en scheduler ser den ────────────────────────
+
+@pytest.mark.parametrize("kommando", [
+    ["plan"],
+    ["stats"],
+    ["context", "--days", "3"],
+])
+def test_cli_avslutter_med_null_naar_den_lykkes(tmp_path, kommando):
+    """REGRESJONSVAKT: exit-koden er kontrakten mot enhver scheduler.
+
+    __main__-blokka fanger model.OppsettFeil, men `model` var bare importert
+    inne i en funksjon. sys.exit(0) kaster SystemExit, Python må evaluere
+    `model.OppsettFeil` for å sammenligne, og fikk NameError. Resultatet var at
+    HVER kjøring endte med exit 1 og en stacktrace, også når kommandoen lyktes.
+
+    launchd, systemd og cron ser bare exit-koden. En jobb som melder feil hver
+    gang den går bra, er verre enn ingen jobb: du slutter å tro på varslene.
+
+    Kjøres som subprosess med vilje. Kaller du main() direkte, går du utenom
+    __main__-blokka, altså nettopp den som var ødelagt.
+    """
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-m", "brandpost.cli", *kommando],
+                       capture_output=True, text=True, timeout=120,
+                       env={**os.environ, "BRANDPOST_WORKSPACE": str(tmp_path)})
+    assert r.returncode == 0, (
+        f"`brandpost {' '.join(kommando)}` ga exit {r.returncode}\n"
+        f"stderr: {r.stderr[-400:]}")
+    assert "Traceback" not in r.stderr, f"stacktrace lekket ut:\n{r.stderr[-400:]}"

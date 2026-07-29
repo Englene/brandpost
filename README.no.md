@@ -164,6 +164,11 @@ på det.
 *Genereringen* er derimot skjønn, og passer som en agent-kjøring. Se
 [agent/generate.md](agent/generate.md).
 
+**For å sette opp alt sammen:** lim [agent/automate.md](agent/automate.md) inn i
+kodeagenten din. Den finner ut hvilken plattform du er på, skriver jobbfilene til
+`deploy/`, installerer dem, og beviser deretter at hver enkelt kjører i stedet for
+å fortelle deg at den burde.
+
 ---
 
 ## Hva som kan bli bedre

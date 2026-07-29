@@ -164,6 +164,10 @@ looking at it.
 *Generation*, on the other hand, is judgement, and suits an agent run. See
 [agent/generate.md](agent/generate.md).
 
+**To set all of it up:** paste [agent/automate.md](agent/automate.md) into your
+coding agent. It works out your platform, writes the job files into `deploy/`,
+installs them, and then proves each one runs instead of telling you it should.
+
 ---
 
 ## What could be better
