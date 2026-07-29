@@ -680,7 +680,7 @@ def main(argv=None) -> int:
     p_pub.set_defaults(func=cmd_publish)
 
     args = ap.parse_args(argv)
-    load_dotenv(_REPO_ROOT / ".env")
+    paths.load_env()
     return args.func(args)
 
 

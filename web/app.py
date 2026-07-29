@@ -28,9 +28,9 @@ import os  # noqa: E402
 # handlinger som LinkedIn-planlegging (BRANDPOST_BROWSER_ENABLED/PAGE_URL) ikke ville
 # se flaggene. Last .env her; overstyrer ALDRI variabler som alt er satt, og
 # planlegg-subprosessen arver miljøet.
-try:  # python-dotenv er alt en avhengighet (enrich/github/loops m.fl.)
-    from dotenv import load_dotenv  # noqa: E402
-    load_dotenv(ROOT / ".env")
+try:
+    from brandpost import paths as _paths  # noqa: E402
+    _paths.load_env()
 except Exception:  # noqa: BLE001
     pass
 

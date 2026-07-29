@@ -74,7 +74,7 @@ def _fetch_org_urns(access_token: str) -> list[str]:
 
 
 def main() -> int:
-    load_dotenv(_REPO_ROOT / ".env")
+    paths.load_env()
     cid = (os.environ.get("LINKEDIN_CLIENT_ID") or "").strip()
     csec = (os.environ.get("LINKEDIN_CLIENT_SECRET") or "").strip()
     if not cid or not csec:

@@ -23,6 +23,43 @@ from pathlib import Path
 # aldri lest, og «cp .env.example .env» i README virket ikke for noen. Én kilde nå.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+
+def env_files() -> list[Path]:
+    """Hvor .env letes etter, i prioritert rekkefølge.
+
+    Arbeidskatalogen FØRST, pakkens egen rot etterpå. Kloner du repoet og kjører
+    derfra, er de to den samme, og alt er som før.
+
+    Forskjellen dukker opp når brandpost er pip-installert i et annet prosjekt:
+    da ligger pakken i site-packages eller i en annen klone, og en .env ved siden
+    av pakken er ikke DIN. Uten dette leses oppsettet ditt aldri, og feilen ser
+    ut som «ukjent merke» i stedet for «fant ikke .env».
+    """
+    cwd = Path.cwd() / ".env"
+    ut = [cwd]
+    pakke = REPO_ROOT / ".env"
+    if pakke != cwd:
+        ut.append(pakke)
+    return ut
+
+
+def load_env() -> list[Path]:
+    """Last .env fra env_files(), første treff vinner per variabel.
+
+    load_dotenv overstyrer aldri noe som alt er satt i miljøet, så en plist eller
+    en eksplisitt eksport vinner over begge filene.
+    """
+    lastet: list[Path] = []
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return lastet
+    for p in env_files():
+        if p.is_file():
+            load_dotenv(p)
+            lastet.append(p)
+    return lastet
+
 DEFAULT_WORKSPACE = Path.cwd() / "workspace"
 
 

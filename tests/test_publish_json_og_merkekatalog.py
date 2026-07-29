@@ -198,3 +198,39 @@ def test_uten_env_er_alt_som_for(monkeypatch):
     monkeypatch.delenv("BRANDPOST_BRANDS_DIR", raising=False)
     assert brandkit.brand_dirs() == [brandkit.BUNDLED_BRANDS_DIR]
     assert "demo" in brandkit.available_brands()
+
+
+# ── .env når pakken er installert et annet sted ────────────
+
+def test_env_letes_i_arbeidskatalogen_forst(tmp_path, monkeypatch):
+    """Pip-installert brandpost skal lese DIN .env, ikke pakkens.
+
+    Med bare pakkestien ble oppsettet ditt aldri lest, og feilen dukket opp som
+    «ukjent merke» i stedet for «fant ikke .env»: to ledd unna årsaken.
+    """
+    from brandpost import paths
+    monkeypatch.chdir(tmp_path)
+    filer = paths.env_files()
+    assert filer[0] == tmp_path / ".env"
+    assert paths.REPO_ROOT / ".env" in filer
+
+
+def test_env_lastes_fra_arbeidskatalogen(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("BRANDPOST_TESTNOKKEL=fra-cwd\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("BRANDPOST_TESTNOKKEL", raising=False)
+    from brandpost import paths
+    lastet = paths.load_env()
+    assert (tmp_path / ".env") in lastet
+    assert os.environ.get("BRANDPOST_TESTNOKKEL") == "fra-cwd"
+
+
+def test_miljoet_vinner_over_env_fila(tmp_path, monkeypatch):
+    """En plist eller en eksplisitt eksport skal slå .env, ellers kan du ikke
+    overstyre oppsettet for én kjøring."""
+    (tmp_path / ".env").write_text("BRANDPOST_TESTNOKKEL=fra-fil\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("BRANDPOST_TESTNOKKEL", "fra-miljoet")
+    from brandpost import paths
+    paths.load_env()
+    assert os.environ["BRANDPOST_TESTNOKKEL"] == "fra-miljoet"
