@@ -9,6 +9,11 @@ goes out without a click.
 
 **[Norsk versjon av denne fila](README.no.md)**
 
+> **New to GitHub, and unsure what an API key is?** There is a beginner's guide
+> that assumes nothing and takes you from zero to posts that write themselves:
+> [kom-i-gang.no.md](docs/kom-i-gang.no.md). It is currently in Norwegian only;
+> ask your coding agent to translate it if you need English.
+
 > **On language:** the code comments are in Norwegian, because that is where this
 > came from. Everything you need to *use* the project exists in both English and
 > Norwegian. Set `language` in your brand profile to choose what language your

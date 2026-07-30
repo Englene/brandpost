@@ -9,6 +9,11 @@ Ingenting går ut uten et klikk.
 
 **[English version of this file](README.md)**
 
+> **Har du aldri brukt GitHub før, og vet ikke hva en API-nøkkel er?**
+> Start med [kom-i-gang-guiden](docs/kom-i-gang.no.md) i stedet. Den forutsetter
+> ingenting, har skjermbilder, og tar deg fra null til innlegg som lager seg selv.
+> Resten av denne fila går ut fra at du er litt vant til kode.
+
 > **Om språk:** kodekommentarene er på norsk. Alt du trenger for å BRUKE prosjektet
 > finnes på begge språk. `language` i merkeprofilen bestemmer hvilket språk
 > innleggene skrives på, og oppsett-prompten intervjuer deg på det språket du
