@@ -12,6 +12,42 @@ gjennom, og trykker publiser på det du liker. Ingenting går ut uten at du sier
 
 ---
 
+## Del 0: Skaff deg en assistent først
+
+Alt det tekniske gjøres av en KI-assistent som kan jobbe med filer på maskinen
+din. Du trenger **én** av disse, og det er verdt å ta den først, for den hjelper
+deg med alt det andre.
+
+| | Hvor | Koster |
+|---|---|---|
+| **Claude Code** (enklest) | https://claude.ai/download | abonnement |
+| **Codex** | følger med ChatGPT-abonnement | abonnement |
+
+Last ned **appen**, ikke noe annet. Du skal ikke innom noe som heter terminal
+eller kommandolinje. Åpne appen, logg inn, og du har et chattevindu som i tillegg
+kan lese og skrive filer.
+
+### La assistenten sjekke maskinen din
+
+Programmet er skrevet i Python. Det er sannsynligvis ikke installert på maskinen
+din fra før, og du skal ikke installere det selv. Skriv dette til assistenten:
+
+```
+Jeg skal sette opp et program som trenger Python 3.11 eller nyere. Sjekk om jeg
+har det, og installer det for meg hvis jeg ikke har. Jeg er ikke teknisk, så
+forklar hva du gjør underveis.
+```
+
+Den ordner det. Hvis den spør om passordet ditt til maskinen underveis, er det
+normalt ved installasjon av programmer, og du skriver det inn i det vanlige
+passordvinduet fra operativsystemet, aldri i chatten.
+
+> **Er du på Windows?** Alt i denne guiden virker, men noen kommandoer ser litt
+> annerledes ut. Si «jeg er på Windows» til assistenten med en gang, så tar den
+> hensyn til det resten av veien.
+
+---
+
 ## Del 1: Hva er GitHub, og hvordan får jeg tak i koden
 
 ### Hva GitHub er
@@ -118,19 +154,15 @@ inn i, er den samme som skriver teksten.
 
 ## Del 4: Sett det opp
 
-Nå gjør assistenten resten. Du trenger **én** av disse:
-
-- **Claude Code**, https://claude.com/claude-code
-- **Codex**, som følger med ChatGPT-abonnement, https://openai.com/codex
-
-Åpne den i mappa du lastet ned. I Claude Code gjør du det ved å åpne mappa i
-appen; i Codex peker du den på mappa.
+Nå gjør assistenten fra Del 0 resten. Åpne den i mappa du lastet ned: i Claude
+Code åpner du mappa i appen, i Codex peker du den på mappa.
 
 Så limer du inn dette, ordrett:
 
 ```
 Les agent/setup.md i denne mappa og gjør det den sier. Jeg har ikke gjort dette
-før, så forklar underveis og spør meg om én ting av gangen.
+før, så forklar underveis og spør meg om én ting av gangen. Sjekk først at alt
+som trengs er installert, og fiks det som mangler.
 ```
 
 Assistenten intervjuer deg nå om firmaet ditt: hva dere gjør, hvem dere snakker
@@ -274,10 +306,11 @@ De vanligste tingene:
 
 ## Kort oppsummert
 
-1. Last ned mappa fra https://github.com/Englene/brandpost
-2. Lag OpenAI-konto, sett et forbrukstak, kopier nøkkelen
-3. Åpne mappa i Claude Code eller Codex, lim inn: *«Les agent/setup.md og gjør det den sier»*
-4. Be om dashbordet: *«Start dashbordet, og gi meg adressen jeg skal åpne»*, og
+1. Skaff Claude Code eller Codex, og be den installere Python (Del 0)
+2. Last ned mappa fra https://github.com/Englene/brandpost
+3. Lag OpenAI-konto, sett et forbrukstak, kopier nøkkelen
+4. Åpne mappa i assistenten, lim inn: *«Les agent/setup.md og gjør det den sier»*
+5. Be om dashbordet: *«Start dashbordet, og gi meg adressen jeg skal åpne»*, og
    åpne `http://localhost:5050` i nettleseren. Det er her du godkjenner.
-5. Lim inn: *«Les agent/automate.md og sett opp automatikken»*
-6. Les gjennom utkastene som dukker opp, og trykk publiser på dem du liker
+6. Lim inn: *«Les agent/automate.md og sett opp automatikken»*
+7. Les gjennom utkastene som dukker opp, og trykk publiser på dem du liker
