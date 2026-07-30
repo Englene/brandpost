@@ -53,10 +53,11 @@ Programmet skal lage bilder til innleggene dine. Det gjør det ikke selv, det
 spør en bildetjeneste om hjelp, på samme måte som du ville spurt ChatGPT.
 
 For at tjenesten skal vite hvem som spør, og hvem regningen går til, trenger du en
-**API-nøkkel**. Det er en lang tekststreng som ser omtrent slik ut:
+**API-nøkkel**. Det er en lang tekststreng som begynner med `sk-` og fortsetter
+med rundt hundre tilfeldige tegn:
 
 ```
-sk-proj-a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0
+sk-proj-DETTE-ER-BARE-ET-EKSEMPEL-EN-EKTE-NOKKEL-ER-MYE-LENGER-OG-TILFELDIG
 ```
 
 Tre ting å vite om den:
@@ -148,7 +149,59 @@ Lag tre utkast til meg nå, så jeg får se hvordan det ser ut.
 
 ---
 
-## Del 5: Få det til å gå av seg selv
+## Del 5: Se og godkjenne innleggene
+
+Utkastene havner ikke i en app eller på en nettside du logger inn på. De ligger
+som filer på din egen maskin, og du ser på dem i et **dashbord** som også kjører
+på din egen maskin.
+
+### Hva «localhost» betyr
+
+Be assistenten om dette:
+
+```
+Start dashbordet, og gi meg adressen jeg skal åpne.
+```
+
+Den svarer med en adresse som ser slik ut:
+
+```
+http://localhost:5050
+```
+
+Den limer du inn i nettleseren, akkurat som en vanlig nettadresse.
+
+`localhost` betyr **denne maskinen**. Det er ikke en side på internett. Ingen
+andre kan åpne den, ikke engang om de har adressen, for den peker på maskinen som
+skriver den inn. Tallet `5050` er bare en dør inn til det ene programmet, sånn at
+flere programmer kan kjøre samtidig uten å krasje.
+
+Der ser du en kalender med innleggene dine. Du kan lese, rette teksten, slette
+det du ikke liker, og planlegge når noe skal ut. **Det er her du godkjenner.**
+Ingenting går til LinkedIn uten at du gjør noe her.
+
+### Det ene som overrasker folk
+
+Dashbordet finnes bare så lenge programmet kjører. Lukker du terminalvinduet
+assistenten startet det i, eller skrur av maskinen, blir adressen død og
+nettleseren sier «kan ikke nås». Innholdet ditt er trygt, det ligger i filene,
+men vinduet inn til det er borte.
+
+Du har to valg:
+
+- **Starte det når du trenger det.** Be assistenten «start dashbordet» hver gang.
+  Helt greit hvis du ser på innlegg én gang i uka.
+- **La det alltid kjøre.** Det setter Del 6 opp for deg, og da er adressen der
+  bestandig, også etter en omstart.
+
+> Vil du åpne dashbordet fra mobilen eller en annen maskin i huset, si det til
+> assistenten. Da må det startes på en annen måte, og du bør vite at dashbordet
+> ikke har passord: alle på samme nettverk kommer inn. På et hjemmenettverk er
+> det som regel greit, på en kafé er det ikke det.
+
+---
+
+## Del 6: Få det til å gå av seg selv
 
 Så langt må du be om innlegg hver gang. Neste steg er at de bare dukker opp.
 
@@ -211,9 +264,10 @@ De vanligste tingene:
 
 | Det skjer | Som regel fordi |
 |---|---|
+| «Siden kan ikke nås» på localhost | dashbordet kjører ikke. Be assistenten starte det, se Del 5 |
 | «ukjent merke» | oppsettet ble ikke fullført, kjør `agent/setup.md` på nytt |
 | Ingen bilder, bare tekst | OpenAI-nøkkelen mangler eller det er tomt på kontoen |
-| Ingenting skjer på de dagene jeg valgte | maskinen var av eller sov, se Del 5 |
+| Ingenting skjer på de dagene jeg valgte | maskinen var av eller sov, se Del 6 |
 | Innleggene føles generiske | intervjuet gikk for fort. Be assistenten om å ta det på nytt, og vær konkret om hva dere ALDRI ville sagt |
 
 ---
@@ -223,5 +277,7 @@ De vanligste tingene:
 1. Last ned mappa fra https://github.com/Englene/brandpost
 2. Lag OpenAI-konto, sett et forbrukstak, kopier nøkkelen
 3. Åpne mappa i Claude Code eller Codex, lim inn: *«Les agent/setup.md og gjør det den sier»*
-4. Lim inn: *«Les agent/automate.md og sett opp automatikken»*
-5. Les gjennom utkastene som dukker opp, og trykk publiser på dem du liker
+4. Be om dashbordet: *«Start dashbordet, og gi meg adressen jeg skal åpne»*, og
+   åpne `http://localhost:5050` i nettleseren. Det er her du godkjenner.
+5. Lim inn: *«Les agent/automate.md og sett opp automatikken»*
+6. Les gjennom utkastene som dukker opp, og trykk publiser på dem du liker
