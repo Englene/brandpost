@@ -15,7 +15,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -668,6 +668,111 @@ def api_generate(request: Request, brand: str | None = None):
         f"<div class='text-sm text-paper/70 p-2'>▶️ Generering startet for {key}. "
         f"Den tar noen minutter og bruker bildekall. Last siden på nytt etterpå. "
         f"Logg: {logg}</div>")
+
+
+# ───────────────────────────────────────────────────────────
+# Bunken: ett forslag om gangen, ja eller nei
+# ───────────────────────────────────────────────────────────
+# Kalenderen viser utkast der de tilfeldigvis havnet. Bunken gir deg dem én av
+# gangen. Et ja krever en dato med det samme, for et innlegg uten dato er en
+# intensjon og ikke en plan, og det er datoen som setter emnet i karantene.
+
+def _bunke_ctx(v: Path, brand: str | None) -> dict:
+    merke = merke_valg(brand)
+    # ALLE_MERKER betyr «ikke filtrer», så det skal ikke sendes som brand_key.
+    kort = store.unjudged_drafts(v, brand_key="" if merke == ALLE_MERKER else merke)
+    igjen = len(kort)
+    d = kort[0] if kort else None
+    ctx: dict = {"igjen": igjen, "brand": merke, "d": None}
+    if d:
+        # Utkastet sendes flatt, IKKE gjennom _card_ctx: den pakker utkastet inne i
+        # sin egen «d»-nøkkel til draft_card.html, og bunken trenger uansett ikke
+        # media-URL-ene, siden bildet ikke er laget ennå.
+        ctx["d"] = d
+        ctx["kilder"] = [k for k in (d.get("kilder") or []) if isinstance(k, str)]
+        ctx["suggest_dt"] = f"{_neste_postdag(v)}T{_suggest_time()}"
+    return ctx
+
+
+def _neste_postdag(v: Path) -> str:
+    """Første ledige publiseringsdag fram i tid, som forslag i datovelgeren.
+
+    Uten et fornuftig forslag må eieren fylle inn dato manuelt på hvert eneste ja,
+    og da er bunken ikke raskere enn kalenderen."""
+    opptatt = set()
+    for mpath in store.socials_dir(v).glob("*/manifest.json"):
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for d in manifest.get("drafts") or []:
+            if isinstance(d, dict) and d.get("scheduled_at"):
+                opptatt.add(str(d["scheduled_at"])[:10])
+    dag = date.today() + timedelta(days=1)
+    for _ in range(60):
+        if dag.weekday() in planmod.POST_DAYS and dag.isoformat() not in opptatt:
+            return dag.isoformat()
+        dag += timedelta(days=1)
+    return (date.today() + timedelta(days=1)).isoformat()
+
+
+@router.get("/bunke", response_class=HTMLResponse)
+def bunke(request: Request, brand: str | None = None):
+    ctx = _bunke_ctx(vault_path(), brand)
+    ctx["merker"] = merker_ctx(ctx["brand"])
+    return templates.TemplateResponse(request, "some/bunke.html", ctx)
+
+
+@router.get("/api/bunke/neste", response_class=HTMLResponse)
+def api_bunke_neste(request: Request, brand: str | None = None):
+    return templates.TemplateResponse(request, "some/bunke_kort.html",
+                                      _bunke_ctx(vault_path(), brand))
+
+
+@router.post("/api/bunke/{day}/{nr}/pass", response_class=HTMLResponse)
+def api_bunke_pass(request: Request, day: str, nr: int, brand: str | None = None):
+    """Nei: lagre dommen og gå videre. Emnet får kort karantene, ikke evig sperre."""
+    v = vault_path()
+    mpath, manifest, idx, _ = _resolve(v, day, nr)
+    store.mark_verdict(mpath, manifest, idx, "passed")
+    return templates.TemplateResponse(request, "some/bunke_kort.html",
+                                      _bunke_ctx(v, brand))
+
+
+@router.post("/api/bunke/{day}/{nr}/like", response_class=HTMLResponse)
+def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(...),
+                   brand: str | None = None):
+    """Ja: krever dato. Planlegger, rendrer bildet, og går videre til neste kort."""
+    v = vault_path()
+    mpath, manifest, idx, draft = _resolve(v, day, nr)
+    when = (when or "").strip()[:16]
+    try:
+        datetime.strptime(when, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return _err("Ugyldig tidspunkt; velg dato og tid på nytt.")
+
+    store.mark_verdict(mpath, manifest, idx, "liked")
+    # Bildet ble ikke laget da forslaget kom, nettopp for å slippe å betale for
+    # det som forkastes. Nå er det bestilt.
+    if not (draft.get("png_path") or "").strip() and draft.get("type") != "karusell":
+        try:
+            merke = brandkit.load_brand(draft.get("brand") or "demo")
+            spec = dict(draft.get("spec") or {})
+            spec.setdefault("headline", draft.get("headline", ""))
+            result = rendermod.render_post(spec, brand=merke)
+            store.attach_image(mpath, manifest, idx, result["png"])
+        except Exception as e:
+            # Planleggingen skal ikke ryke fordi bildekallet gjorde det. Utkastet
+            # får dato, og bildet kan regenereres fra kortet i kalenderen.
+            store.mark_scheduled(mpath, manifest, idx, when)
+            return _err(f"Planlagt, men bildet feilet: {e}. Regenerer fra kalenderen.")
+
+    store.mark_scheduled(mpath, manifest, idx, when)
+    planmod.mark_slot(v, day, "planlagt", draft_ref={"manifest": day, "nr": nr})
+    ctx = _bunke_ctx(v, brand)
+    naar = f"{when[8:10]}.{when[5:7]} kl. {when[11:16]}"
+    ctx["flash"] = f"Planlagt {naar}."
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 
 # ───────────────────────────────────────────────────────────

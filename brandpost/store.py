@@ -14,7 +14,7 @@ import json
 import re
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import paths
@@ -78,6 +78,17 @@ def clean_text(text: str) -> str:
     return re.sub(r"  +", " ", t).strip()
 
 
+def clean_topic(text: str | None) -> str:
+    """Normaliser et emne, så to skrivemåter av samme poeng møtes.
+
+    «ESA-retur», «esa retur» og «ESA  Retur» blir alle «esa-retur». Uten dette
+    slipper sperrelista gjennom det samme poenget i ny innpakning, og hele
+    variasjonsvernet blir en illusjon."""
+    t = (text or "").strip().lower()
+    t = re.sub(r"[^0-9a-zæøå]+", "-", t)
+    return re.sub(r"-{2,}", "-", t).strip("-")[:60]
+
+
 def used_angles(vault: Path | None = None, n: int = 30) -> list[dict]:
     """Vinkler som faktisk er BRUKT: utkast med status publisert eller planlagt.
 
@@ -137,9 +148,13 @@ def _slug(text: str, maxlen: int = 60) -> str:
     return "-".join(keep.split())[:maxlen].strip("-").lower() or "post"
 
 
-def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes,
+def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes | None,
                 *, index: int, when: datetime | None = None) -> dict:
-    """Skriv ett utkast (png + md). Returnerer metadata inkl. filstier."""
+    """Skriv ett utkast (png + md). Returnerer metadata inkl. filstier.
+
+    `png=None` skriver et TEKST-utkast uten bilde. Bunke-visningen lager mange
+    forslag som de fleste av forkastes, og et gpt-image-2-kall per forslag ville
+    vært betalt for søppel. Bildet rendres først når utkastet får et ja."""
     when = when or datetime.now()
     day_dir = socials_dir(vault) / when.strftime("%Y-%m-%d")
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -147,27 +162,31 @@ def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes,
     stem = f"post-{index}-{brand_key}-{_slug(spec.get('headline', ''))}"
     png_path = day_dir / f"{stem}.png"
     md_path = day_dir / f"{stem}.md"
-    png_path.write_bytes(png)
+    if png is not None:
+        png_path.write_bytes(png)
 
     headline = spec.get("headline", "").strip()
     body = spec.get("body", "").strip()          # LinkedIn-brødteksten (over bildet)
     why = spec.get("why_now", "").strip()
     fmt = spec.get("format", "typografi-kort")
+    emne = clean_topic(spec.get("emne"))
     fm = {
         "type": "some-draft",
         "brand": brand_key,
         "format": fmt,
         "pillar": (spec.get("pillar") or "").strip(),
+        "emne": emne,
         "headline": headline,
         "generated": when.isoformat(timespec="seconds"),
-        "image": png_path.name,
+        "image": png_path.name if png is not None else "",
         "status": "utkast",
     }
     fm_yaml = "\n".join(f"{k}: {json.dumps(v, ensure_ascii=False)}" for k, v in fm.items())
+    bilde_blokk = f"![[{png_path.name}]]\n\n" if png is not None else "_(bilde lages når utkastet får et ja)_\n\n"
     md = (
         f"---\n{fm_yaml}\n---\n\n"
         f"# {headline}\n\n"
-        f"![[{png_path.name}]]\n\n"
+        f"{bilde_blokk}"
         f"## LinkedIn-tekst\n\n{body or '(bilde-kort, ingen brødtekst)'}\n\n"
         f"## Hvorfor nå\n\n{why or '(ikke oppgitt)'}\n"
     )
@@ -176,7 +195,9 @@ def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes,
         "brand": brand_key, "format": fmt, "headline": headline,
         "motif": (spec.get("motif") or "").strip(),
         "pillar": (spec.get("pillar") or "").strip(),
-        "png_path": str(png_path), "md_path": str(md_path),
+        "emne": emne,
+        "png_path": str(png_path) if png is not None else "",
+        "md_path": str(md_path),
         "body": body, "why_now": why,
         "kilder": [k for k in (spec.get("kilder") or []) if isinstance(k, str)],
         "status": "proposed",  # → "published" når eieren publiserer den (godkjenn-hvert)
@@ -207,8 +228,10 @@ def write_carousel(vault: Path | None, brand_key: str, spec: dict, built: dict,
 
     body = (spec.get("body") or "").strip()      # LinkedIn-teksten over dokumentet
     why = (spec.get("why_now") or "").strip()
+    emne = clean_topic(spec.get("emne"))
     fm = {
         "type": "some-karusell", "brand": brand_key, "tittel": tittel,
+        "emne": emne,
         "slides": built.get("n"), "generated": when.isoformat(timespec="seconds"),
         "pdf": pdf_path.name, "status": "utkast",
     }
@@ -226,6 +249,7 @@ def write_carousel(vault: Path | None, brand_key: str, spec: dict, built: dict,
     return {
         "type": "karusell", "brand": brand_key, "format": "karusell",
         "pillar": (spec.get("pillar") or "").strip(),
+        "emne": emne,
         "headline": tittel, "tittel": tittel, "n": built.get("n"),
         "pdf_path": str(pdf_path), "cover_path": str(cover_path), "md_path": str(md_path),
         "pdf": built["pdf"], "cover": built["cover"], "size_mb": built.get("size_mb"),
@@ -246,6 +270,7 @@ def record(vault: Path | None, drafts: list[dict], *, when: datetime | None = No
             "brand": d.get("brand"), "format": d.get("format"),
             "headline": d.get("headline"), "motif": (d.get("motif") or "")[:140],
             "pillar": d.get("pillar", ""),
+            "emne": d.get("emne", ""),
             "date": when.strftime("%Y-%m-%d"),
         })
     state["posts"] = state["posts"][-STATE_KEEP:]
@@ -379,6 +404,147 @@ def mark_scheduled(manifest_path: Path, manifest: dict, idx: int,
         if confirmed:
             drafts[idx]["scheduled_confirmed"] = confirmed
         atomic_write_json(Path(manifest_path), manifest)
+
+
+def unjudged_drafts(vault: Path | None = None, brand_key: str = "") -> list[dict]:
+    """Bunken: utkast som venter på en dom, eldste først.
+
+    Et utkast hører hjemme her så lenge det er «proposed» og mangler `verdict`.
+    Planlagte og publiserte er ute av bunken uansett, og et utkast som alt er
+    swipet vekk skal ikke dukke opp igjen i samme bunke.
+
+    Hvert element bærer `day` og `nr` (dagsmappa og «publiser: N»-nummeret), som
+    til sammen er den stabile adressen dashbordet bruker for å skrive tilbake."""
+    ut: list[dict] = []
+    for mpath in sorted(socials_dir(vault).glob("*/manifest.json")):
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        day = mpath.parent.name
+        for i, d in enumerate(manifest.get("drafts") or []):
+            if not isinstance(d, dict):
+                continue
+            if d.get("status") != "proposed" or d.get("verdict"):
+                continue
+            if brand_key and d.get("brand") != brand_key:
+                continue
+            ut.append({**d, "day": day, "idx": i})
+    return ut
+
+
+def attach_image(manifest_path: Path, manifest: dict, idx: int, png: bytes) -> str:
+    """Fest et bilde på et tekst-utkast som ble laget uten ett, og returner stien.
+
+    Bunken lager forslag uten bilde for ikke å betale for det som forkastes. Får
+    utkastet et ja, må bildet lages og knyttes til, og md-fila oppdateres, ellers
+    står vault-visningen igjen med «bilde lages når utkastet får et ja» for evig."""
+    drafts = manifest.get("drafts") or []
+    if not (0 <= idx < len(drafts)):
+        return ""
+    d = drafts[idx]
+    day_dir = Path(manifest_path).parent
+    stem = f"post-{d.get('nr', idx + 1)}-{d.get('brand', 'ukjent')}-{_slug(d.get('headline', ''))}"
+    png_path = day_dir / f"{stem}.png"
+    png_path.write_bytes(png)
+    d["png_path"] = str(png_path)
+
+    md_path = Path(d.get("md_path") or "")
+    if md_path.name and (day_dir / md_path.name).exists():
+        md_fil = day_dir / md_path.name
+        tekst = md_fil.read_text(encoding="utf-8")
+        tekst = tekst.replace("_(bilde lages når utkastet får et ja)_",
+                              f"![[{png_path.name}]]")
+        tekst = tekst.replace('image: ""', f'image: "{png_path.name}"')
+        atomic_write_text(md_fil, tekst)
+
+    atomic_write_json(Path(manifest_path), manifest)
+    return str(png_path)
+
+
+def mark_verdict(manifest_path: Path, manifest: dict, idx: int, verdict: str) -> None:
+    """Lagre eierens dom fra bunken: «liked» eller «passed», med tidsstempel.
+
+    Dette er et SIDESPOR til status, ikke et steg i den. Et utkast som får «liked»
+    blir «planlagt» først når det har fått en dato; et «passed» blir liggende som
+    «proposed» og forsvinner bare fra bunken. Skillet finnes fordi status beskriver
+    innleggets livsløp, mens verdict beskriver hva eieren mente om det, og de to
+    svarer på ulike spørsmål når vi senere skal måle hva som traff."""
+    if verdict not in ("liked", "passed"):
+        raise ValueError(f"ukjent verdict: {verdict!r}")
+    drafts = manifest.get("drafts") or []
+    if 0 <= idx < len(drafts):
+        drafts[idx]["verdict"] = verdict
+        drafts[idx]["verdict_at"] = datetime.now().isoformat(timespec="minutes")
+        atomic_write_json(Path(manifest_path), manifest)
+
+
+# Karantene-vinduer for blocked_topics. Hard sperre følger det som faktisk er ute
+# eller på vei ut; myk følger det eieren har swipet vekk. At de er ULIKE er hele
+# poenget: et nei betyr «ikke nå», ikke «aldri». Sperret vi avviste like lenge som
+# planlagte, gjentok vi feilen fra 22. juli 2026, da alt generert ble utestengt og
+# åtte vinkler brant uten at én var publisert (se used_angles).
+HARD_TOPIC_DAYS = 30
+SOFT_TOPIC_DAYS = 10
+
+
+def blocked_topics(vault: Path | None = None, now: datetime | None = None,
+                   hard_days: int = HARD_TOPIC_DAYS,
+                   soft_days: int = SOFT_TOPIC_DAYS) -> dict[str, list[str]]:
+    """Emner som ikke skal foreslås igjen ennå.
+
+    → {"hard": [...], "soft": [...]}
+      hard: emner som er planlagt eller publisert de siste `hard_days`. Forbudt.
+      soft: emner eieren har swipet vekk de siste `soft_days`. Unngå om mulig.
+
+    Datoen leses fra utkastets egen tidslinje, ikke fra dagsmappa: et innlegg laget
+    mandag kan være planlagt til fredag, og det er når det er UTE som avgjør hvor
+    lenge emnet skal ligge lavt."""
+    now = now or datetime.now()
+    hard_grense = now - timedelta(days=hard_days)
+    soft_grense = now - timedelta(days=soft_days)
+    hard: dict[str, None] = {}      # dict bevarer rekkefølge og gir gratis dedup
+    soft: dict[str, None] = {}
+
+    for mpath in sorted(socials_dir(vault).glob("*/manifest.json"), reverse=True):
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        dagsdato = mpath.parent.name
+        for d in manifest.get("drafts") or []:
+            if not isinstance(d, dict):
+                continue
+            emne = clean_topic(d.get("emne"))
+            if not emne:
+                continue
+            status = d.get("status")
+            if status in ("published", "planlagt"):
+                nar = _draft_time(d, dagsdato, ("published_at", "scheduled_at"))
+                if nar and nar >= hard_grense:
+                    hard.setdefault(emne, None)
+            elif d.get("verdict") == "passed":
+                nar = _draft_time(d, dagsdato, ("verdict_at",))
+                if nar and nar >= soft_grense:
+                    soft.setdefault(emne, None)
+
+    return {"hard": list(hard), "soft": [e for e in soft if e not in hard]}
+
+
+def _draft_time(draft: dict, dagsdato: str, felter: tuple[str, ...]) -> datetime | None:
+    """Første brukbare tidsstempel fra `felter`, ellers dagsmappa som fallback."""
+    for f in felter:
+        raw = (draft.get(f) or "").strip()
+        if raw:
+            for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(raw[:len(datetime.now().strftime(fmt))], fmt)
+                except ValueError:
+                    continue
+    try:
+        return datetime.strptime(dagsdato, "%Y-%m-%d")
+    except ValueError:
+        return None
 
 
 def mark_unscheduled(manifest_path: Path, manifest: dict, idx: int) -> None:

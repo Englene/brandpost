@@ -1,0 +1,96 @@
+{# Ett kort i bunken. Byttes ut i sin helhet av hver swipe (hx-swap=outerHTML),
+   slik draft_card.html gjør det: serveren eier tilstanden, ikke nettleseren. #}
+<div id="bunke-kort" class="space-y-4">
+
+  {% if flash %}
+    <div class="text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 rounded-lg px-3 py-2">
+      {{ flash }}
+    </div>
+  {% endif %}
+
+  {% if not d %}
+    <div class="border border-ink-700 rounded-2xl p-10 text-center">
+      <div class="text-4xl mb-3">🎉</div>
+      <div class="text-lg font-semibold">Bunken er tom</div>
+      <div class="text-sm text-paper/50 mt-2">
+        Alle forslag er vurdert. Generer nye fra kalenderen, eller kom tilbake
+        etter neste kjøring.
+      </div>
+      <a href="/some" class="inline-block mt-4 text-sm text-paper/70 hover:text-paper underline">
+        Til kalenderen</a>
+    </div>
+  {% else %}
+    <div class="flex items-center justify-between text-xs text-paper/40">
+      <span>{{ igjen }} igjen i bunken</span>
+      <span>{{ d.day }} · nr {{ d.nr }}{% if d.emne %} · <span class="text-paper/60">{{ d.emne }}</span>{% endif %}</span>
+    </div>
+
+    <div class="border border-ink-700 rounded-2xl p-5 bg-ink-900">
+      <div class="text-xs uppercase tracking-wide text-paper/40 mb-2">
+        {{ d.format or 'innlegg' }}{% if d.pillar %} · {{ d.pillar }}{% endif %}
+      </div>
+      <h2 class="text-xl font-bold leading-snug mb-3">{{ d.headline }}</h2>
+
+      {% if d.body %}
+        <div class="text-sm text-paper/80 whitespace-pre-line leading-relaxed">{{ d.body }}</div>
+      {% endif %}
+
+      {% if d.why_now %}
+        <div class="mt-4 text-xs text-paper/50 border-l-2 border-ink-700 pl-3">
+          <span class="text-paper/40">Hvorfor nå:</span> {{ d.why_now }}
+        </div>
+      {% endif %}
+
+      {% if d.motif %}
+        {# Bildet finnes ikke ennå: det lages først hvis du sier ja. Derfor vises
+           motiv-beskrivelsen, så du vet hva du godkjenner. #}
+        <div class="mt-4 text-xs text-paper/40 border border-dashed border-ink-700 rounded-lg p-3">
+          <span class="text-paper/50">Tenkt bilde:</span> {{ d.motif }}
+        </div>
+      {% endif %}
+
+      {% if kilder %}
+        <details class="mt-4 text-xs text-paper/40">
+          <summary class="cursor-pointer hover:text-paper/70">Kilder ({{ kilder|length }})</summary>
+          <ul class="mt-2 space-y-1">
+            {% for k in kilder %}<li class="break-all">{{ k }}</li>{% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <button hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/pass?brand={{ brand }}"
+              hx-target="#bunke-kort" hx-swap="outerHTML"
+              data-bunke="nei"
+              class="border border-ink-700 rounded-xl py-3 text-sm text-paper/60
+                     hover:text-paper hover:border-red-900 hover:bg-red-950/30">
+        <span class="htmx-indicator">⏳ </span>Nei <span class="text-paper/30 ml-1">←</span>
+      </button>
+      <button type="button" data-bunke="ja"
+              onclick="document.getElementById('ja-form').classList.toggle('hidden')"
+              class="border border-emerald-900 bg-emerald-950/30 rounded-xl py-3 text-sm
+                     text-emerald-300 hover:bg-emerald-950/60">
+        Ja <span class="text-emerald-300/40 ml-1">→</span>
+      </button>
+    </div>
+
+    {# Et ja uten dato er en intensjon, ikke en plan. Datoen er dessuten det som
+       setter emnet i karantene, så den kan ikke utsettes. #}
+    <form id="ja-form" class="hidden border border-emerald-900 rounded-xl p-4 space-y-3"
+          hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/like?brand={{ brand }}"
+          hx-target="#bunke-kort" hx-swap="outerHTML">
+      <label class="block text-xs text-paper/50">
+        Når skal det ut?
+        <input type="datetime-local" name="when" value="{{ suggest_dt }}" step="900" required
+               class="mt-1 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5 text-sm text-paper">
+      </label>
+      <button class="w-full bg-emerald-800 hover:bg-emerald-700 rounded-lg py-2 text-sm font-medium">
+        <span class="htmx-indicator">⏳ </span>Planlegg og lag bilde
+      </button>
+      <div class="text-xs text-paper/40">
+        Bildet lages nå, ikke før. Det er derfor bunken er billig å bla i.
+      </div>
+    </form>
+  {% endif %}
+</div>

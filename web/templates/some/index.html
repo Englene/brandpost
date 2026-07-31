@@ -21,6 +21,16 @@
         </label>
       </div>
     </div>
+    {# Fanene. Bunken er et tillegg til kalenderen, ikke en erstatning: kalenderen
+       viser helheten, bunken tar deg gjennom det som venter på en avgjørelse. #}
+    <div class="flex gap-1 mb-5 border-b border-ink-700">
+      <a href="/some?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper font-medium border-b-2 border-paper">
+        Kalender</a>
+      <a href="/some/bunke?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper/50 hover:text-paper border-b-2 border-transparent">
+        Bunken</a>
+    </div>
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <div class="xl:col-span-2 space-y-6">
         <div id="calendar">{% include "some/calendar.html" %}</div>

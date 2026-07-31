@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Bunken · SoMe{% endblock %}
+{% block body %}
+<div class="h-screen overflow-y-auto">
+  <div class="max-w-xl mx-auto p-6">
+
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h1 class="text-2xl font-bold">Bunken</h1>
+        <div class="text-xs text-paper/50">Ett forslag om gangen. Ja krever en dato.</div>
+      </div>
+      <label class="flex items-center gap-2 text-xs text-paper/50">
+        Selskap
+        <select onchange="location.href='/some/bunke?brand=' + this.value"
+                class="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-sm text-paper">
+          {% for m in merker.valg %}
+            <option value="{{ m.key }}" {% if m.key == merker.valgt %}selected{% endif %}>
+              {{ m.navn }}{% if m.dvale %} (dvale){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    {# Fanene. Kalenderen består urørt; bunken er et tillegg, ikke en erstatning. #}
+    <div class="flex gap-1 mb-6 border-b border-ink-700">
+      <a href="/some?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper/50 hover:text-paper border-b-2 border-transparent">
+        Kalender</a>
+      <a href="/some/bunke?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper font-medium border-b-2 border-paper">
+        Bunken{% if igjen %} <span class="text-paper/40">({{ igjen }})</span>{% endif %}</a>
+    </div>
+
+    {% include "some/bunke_kort.html" %}
+
+    <div class="mt-6 text-center text-xs text-paper/30">
+      Hurtigtaster: <kbd class="px-1 border border-ink-700 rounded">←</kbd> nei,
+      <kbd class="px-1 border border-ink-700 rounded">→</kbd> ja
+    </div>
+  </div>
+</div>
+
+<script>
+/* En bunke uten hurtigtaster er ikke raskere enn kalenderen. Piltastene treffer
+   de samme knappene htmx allerede eier, så det finnes bare én kodevei per handling. */
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'ArrowLeft')  { document.querySelector('[data-bunke="nei"]')?.click(); }
+  if (e.key === 'ArrowRight') { document.querySelector('[data-bunke="ja"]')?.click(); }
+});
+</script>
+{% endblock %}

@@ -423,6 +423,11 @@ _POST_SCHEMA = {
                     "motif": {"type": "string"},
                     "concept": {"type": "string"},
                     "pillar": {"type": "string"},
+                    # Emnet er POENGET, ikke området. Pilaren er for grov til å
+                    # hindre gjentak: seks pilarer mot ~17 innlegg i måneden ville
+                    # tømt idébanken på en uke. «esa-retur» og «skattefunn-frist»
+                    # er riktig nivå; «data-bevis» er pilaren og hører ikke hjemme her.
+                    "emne": {"type": "string"},
                     "tilda": {"type": "boolean"},
                     "body": {"type": "string"},
                     "why_now": {"type": "string"},
@@ -546,6 +551,43 @@ def _normalize_pillars(posts: list[dict], brand) -> None:
         p["pillar"] = pid if pid in valid else ("annet" if pid else "")
 
 
+def _emne_block(sperret: dict) -> str:
+    """Karantene-blokka i brukermeldingen. Tom når ingenting er sperret."""
+    hard, soft = sperret.get("hard") or [], sperret.get("soft") or []
+    if not hard and not soft:
+        return ""
+    ut = "\n\nEMNE-KARANTENE. Sett `emne` på hvert utkast: en kort kebab-case-id for "
+    ut += "POENGET, ikke for området (riktig: «esa-retur», «skattefunn-frist». Feil: "
+    ut += "«data-bevis», som er pilaren)."
+    if hard:
+        ut += ("\nFORBUDT (nylig planlagt eller publisert, disse blir forkastet "
+               "automatisk):\n" + json.dumps(hard, ensure_ascii=False))
+    if soft:
+        ut += ("\nUNNGÅ OM MULIG (eieren swipet disse vekk nylig; de kan komme "
+               "tilbake senere, men ikke nå):\n" + json.dumps(soft, ensure_ascii=False))
+    return ut
+
+
+def _guard_topics(posts: list[dict], sperret: dict) -> list[dict]:
+    """Forkast utkast som treffer den harde karantenen, og normaliser `emne`.
+
+    Instruksen i prompten er en oppfordring, ikke en sperre. Det er nettopp derfor
+    variasjonen ikke har holdt hittil: modellen har fått beskjed om å la være å
+    gjenta seg siden 22. juli, og gjør det likevel. `_guard_slots` i plan.py
+    validerer pilar og dato på samme måte, av samme grunn."""
+    hard = set(sperret.get("hard") or [])
+    beholdt: list[dict] = []
+    for p in posts:
+        emne = store.clean_topic(p.get("emne"))
+        p["emne"] = emne
+        if emne and emne in hard:
+            print(f"  🚧 forkastet «{(p.get('headline') or '')[:40]}»: emne «{emne}» "
+                  f"er i karantene", file=sys.stderr)
+            continue
+        beholdt.append(p)
+    return beholdt
+
+
 def cmd_run(args) -> int:
     from . import model as loop_model
     vault = _vault(args)
@@ -556,6 +598,9 @@ def cmd_run(args) -> int:
     angles = store.used_angles(vault)
     lessons = store.read_lessons(vault)
     coverage = store.pillar_coverage(vault, brandkit.pillar_ids(brand))
+    # Emne-karantene. To vinduer med vilje: det som er ute eller på vei ut er
+    # forbudt, det eieren har swipet vekk er bare uønsket. Se blocked_topics.
+    sperret = store.blocked_topics(vault)
     # Slot-fylling: hver kjøring fyller ukas ÅPNE plan-slots (ett utkast per
     # publiseringsdag framover), ikke flere varianter for samme dag. Uten plan
     # faller vi tilbake til args.n utkast for i dag.
@@ -584,6 +629,7 @@ def cmd_run(args) -> int:
               "headline fra disse. Alt annet er ledig, også vinkler som har vært "
               "foreslått før uten å bli publisert:\n"
             + json.dumps(angles, ensure_ascii=False)
+            + _emne_block(sperret)
             + ("\n\nLÆRDOMMER (hva som har funket, bruk det):\n" + lessons if lessons else "")
             + slot_block
             + "\n\nVARIASJON (rettingen 22. juli): bytt ÅPNINGSGREP mellom "
@@ -605,6 +651,11 @@ def cmd_run(args) -> int:
         print("  ⚠️  modellen ga ingen utkast", file=sys.stderr)
         return 1
     _normalize_pillars(posts, brand)
+    posts = _guard_topics(posts, sperret)
+    if not posts:
+        print("  ⚠️  alle utkast traff emne-karantenen, ingenting å rendre",
+              file=sys.stderr)
+        return 1
     valid_dates = {s["date"] for s in slots}
     for p in posts:  # ukjent/påfunnet slot_date -> i dag (render-fallback)
         if p.get("slot_date") not in valid_dates:
