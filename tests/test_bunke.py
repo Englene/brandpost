@@ -719,3 +719,59 @@ def test_tavla_svarer(bunke_client):
     r = client.get("/some/tavle")
     assert r.status_code == 200
     assert "Tavla" in r.text
+
+
+# ── Datoer i fortiden ────────────────────────────────────────────────────────
+# 31. juli 2026 ble et innlegg planlagt til 2025-07-31 (feil år i det frie
+# datofeltet). Publisher nektet med rette å legge ut noe tolv måneder på
+# etterskudd, så det ble bare liggende, og tavla viste det som «ute».
+
+def test_planlegging_bakover_avvises(bunke_client):
+    client, _, mpath = bunke_client
+    r = client.post("/some/api/bunke/2026-07-31/1/like",
+                    data={"when": "2025-07-31T15:15"})
+    assert "tilbake i tid" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["status"] == "proposed", "utkastet skal ikke ha blitt planlagt"
+    assert "scheduled_at" not in d
+
+
+def test_det_frie_feltet_valideres_ogsaa(bunke_client):
+    """Nedtrekket kan ikke gi fortid, men det frie feltet kan. Det var nettopp
+    der feilen kom inn."""
+    client, _, mpath = bunke_client
+    r = client.post("/some/api/bunke/2026-07-31/1/like",
+                    data={"when": "2030-01-01T10:00",       # gyldig i nedtrekket
+                          "when_egen": "2020-01-01T10:00"})  # men fritt felt vinner
+    assert "tilbake i tid" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["status"] == "proposed"
+
+
+def test_kalenderens_planlegg_knapp_avviser_ogsaa_fortid(bunke_client):
+    """Samme hull fantes i «Aksepter og planlegg» på kalendersiden, og det var
+    faktisk den knappen som slapp 2025-datoen gjennom."""
+    client, _, mpath = bunke_client
+    r = client.post("/some/api/draft/2026-07-31/1/schedule",
+                    data={"when": "2025-07-31T15:15"})
+    assert "tilbake i tid" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["status"] == "proposed"
+
+
+def test_tavla_skiller_forfalt_fra_publisert(tmp_path, monkeypatch):
+    """Et planlagt innlegg med passert tidspunkt er strandet, ikke ute. Blandet
+    inn i «ute» så det ut som om alt hadde gått fint."""
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    from web import app as somemod
+    igaar = (date.today() - timedelta(days=1)).isoformat()
+    _dag(tmp_path, "2026-01-02", [
+        {"headline": "Strandet", "status": "planlagt", "brand": "demo",
+         "scheduled_at": f"{igaar}T10:00"},
+        {"headline": "Faktisk ute", "status": "published", "brand": "demo",
+         "published_at": f"{igaar}T10:00"},
+    ])
+    k = somemod._tavle_ctx(tmp_path, "demo")["kolonner"]
+    assert [r["headline"] for r in k["forfalt"]] == ["Strandet"]
+    assert [r["headline"] for r in k["ute"]] == ["Faktisk ute"]
+    assert k["forfalt"][0]["dager_siden"] == 1

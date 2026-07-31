@@ -54,6 +54,36 @@
       </div>
     {% endmacro %}
 
+    {# Forfalte først og i rødt: et planlagt innlegg med passert tidspunkt er ikke
+       ute, det er strandet. Publisher nekter alt som er mer enn noen timer på
+       etterskudd, så det blir liggende til noen gjør noe. #}
+    {% if kolonner.forfalt %}
+      <div class="mb-6 border border-red-900 bg-red-950/25 rounded-xl p-4">
+        <div class="text-sm text-red-300 font-medium mb-1">
+          {{ kolonner.forfalt|length }} innlegg gikk aldri ut
+        </div>
+        <div class="text-xs text-paper/50 mb-3">
+          Tidspunktet er passert, men de er ikke publisert. Publisher legger ikke ut
+          noe som er mer enn noen timer på etterskudd. Gi dem en ny dato i kalenderen.
+        </div>
+        <div class="space-y-2">
+          {% for r in kolonner.forfalt %}
+            <div class="flex items-center justify-between gap-3 border border-red-900/60 rounded-lg p-2">
+              <div class="min-w-0">
+                <div class="text-sm">{{ r.headline }}</div>
+                <div class="text-xs text-red-300/70">
+                  skulle gått {{ r.ukedag }} {{ r.vises }} {{ r.dato[:4] }} kl. {{ r.tid }}
+                  ({{ r.dager_siden }} dager siden)
+                </div>
+              </div>
+              <a href="/some?brand={{ merker.valgt }}&day={{ r.kildedag }}"
+                 class="text-xs text-paper/60 hover:text-paper underline shrink-0">Fiks</a>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
       <div>
         <div class="text-xs uppercase tracking-wide text-paper/40 mb-2">

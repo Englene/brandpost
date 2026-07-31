@@ -411,9 +411,13 @@ def api_schedule(request: Request, day: str, nr: int, when: str = Form(...)):
     mpath, manifest, idx, draft = _resolve(v, day, nr)
     when = (when or "").strip()[:16]
     try:
-        datetime.strptime(when, "%Y-%m-%dT%H:%M")
+        naar = datetime.strptime(when, "%Y-%m-%dT%H:%M")
     except ValueError:
         return _err("Ugyldig tidspunkt; velg dato og tid på nytt.")
+    if naar < datetime.now():
+        return _err(f"{naar:%d.%m.%Y kl. %H:%M} er tilbake i tid. Publisher nekter "
+                    f"å legge ut noe som er mer enn noen timer på etterskudd, så "
+                    f"innlegget ville bare blitt liggende.")
     # valget 22. juli: VI eier publiseringen. Knappen lagrer bare tidspunktet;
     # publisher-jobben legger ut via API akkurat da og sender e-post i samme
     # øyeblikk. Derfor er dette et lynkjapt skriv, ikke en nettleser-kjøring som
@@ -704,6 +708,7 @@ def _bunke_ctx(v: Path, brand: str | None) -> dict:
         # og maskinspesifikke, så et utkast generert på en annen maskin ville
         # pekt på en sti som ikke finnes her.
         ctx["media"] = _bunke_media(v, d)
+        ctx["slides"] = _bunke_slides(v, d)
     return ctx
 
 
@@ -717,6 +722,25 @@ def _bunke_media(v: Path, d: dict) -> str:
     if not fil.is_file():
         return ""
     return f"/some/media/{day}/{Path(navn).name}?v={int(fil.stat().st_mtime)}"
+
+
+def _bunke_slides(v: Path, d: dict) -> list[str]:
+    """Alle slides i en karusell, i rekkefølge.
+
+    En karusell kan ikke vurderes på forsiden alene: poenget bygges opp over
+    slidene, og en svak side tre er en grunn til å si nei. Kalenderkortet har vist
+    hele stripa hele tiden; bunken viste bare forsiden."""
+    if d.get("type") != "karusell" or not d.get("pdf_path"):
+        return []
+    day = d.get("day", "")
+    stem = Path(d["pdf_path"]).stem
+    sdir = store.socials_dir(v) / day / stem
+    if not sdir.is_dir():
+        return []
+    filer = sorted(sdir.glob("slide-*.png"),
+                   key=lambda q: int(q.stem.split("-")[-1]))
+    return [f"/some/media/{day}/{stem}/{q.name}?v={int(q.stat().st_mtime)}"
+            for q in filer]
 
 
 _NO_DAYS = ("mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag")
@@ -835,7 +859,12 @@ def _tavle_ctx(v: Path, brand: str | None) -> dict:
     merke = merke_valg(brand)
     idag = date.today()
     uke_slutt = idag + timedelta(days=(6 - idag.weekday()))
-    kolonner: dict[str, list[dict]] = {"ute": [], "denne_uka": [], "senere": []}
+    # «forfalt» er en egen kolonne, ikke en variant av «ute». Et planlagt innlegg
+    # med passert tidspunkt er IKKE publisert, det er strandet: publisher nekter
+    # alt som er mer enn noen timer på etterskudd. Blandet inn i «ute» så det ut
+    # som om det hadde gått fint, og en feil dato kunne ligge upåaktet.
+    kolonner: dict[str, list[dict]] = {"forfalt": [], "denne_uka": [],
+                                       "senere": [], "ute": []}
 
     for mpath in sorted(store.socials_dir(v).glob("*/manifest.json")):
         kildedag = mpath.parent.name
@@ -868,14 +897,18 @@ def _tavle_ctx(v: Path, brand: str | None) -> dict:
                 continue
             rad["ukedag"] = _NO_DAYS[dd.weekday()]
             rad["vises"] = f"{dd.day}. {_NO_MONTHS[dd.month - 1]}"
-            if d.get("status") == "published" or dd < idag:
+            if d.get("status") == "published":
                 kolonner["ute"].append(rad)
+            elif naar < datetime.now().isoformat(timespec="minutes"):
+                rad["dager_siden"] = (idag - dd).days
+                kolonner["forfalt"].append(rad)
             elif dd <= uke_slutt:
                 kolonner["denne_uka"].append(rad)
             else:
                 kolonner["senere"].append(rad)
 
     kolonner["ute"].sort(key=lambda r: r["dato"], reverse=True)   # nyeste først
+    kolonner["forfalt"].sort(key=lambda r: r["dato"])
     kolonner["denne_uka"].sort(key=lambda r: (r["dato"], r["tid"]))
     kolonner["senere"].sort(key=lambda r: (r["dato"], r["tid"]))
     kolonner["ute"] = kolonner["ute"][:12]        # historikken er ikke poenget
@@ -962,6 +995,7 @@ def api_bunke_rett(request: Request, day: str, nr: int, note: str = Form(...),
     ctx["d"]["day"] = day
     ctx["kilder"] = [k for k in (ferdig.get("kilder") or []) if isinstance(k, str)]
     ctx["media"] = _bunke_media(v, {**ferdig, "day": day})
+    ctx["slides"] = _bunke_slides(v, {**ferdig, "day": day})
     ctx["flash"] = (res["endret"] or "Rettet.") + bilde_note
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
@@ -977,9 +1011,17 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
     mpath, manifest, idx, draft = _resolve(v, day, nr)
     when = ((when_egen or "").strip() or (when or "").strip())[:16]
     try:
-        datetime.strptime(when, "%Y-%m-%dT%H:%M")
+        naar = datetime.strptime(when, "%Y-%m-%dT%H:%M")
     except ValueError:
         return _err("Ugyldig tidspunkt; velg dato og tid på nytt.")
+    # Ingen planlegging bakover. 31. juli 2026 ble et innlegg planlagt til
+    # 2025-07-31 (feil år i det frie datofeltet). Publisher nektet med rette å
+    # legge ut noe tolv måneder på etterskudd, så innlegget ble bare liggende,
+    # og ingenting sa fra. En dato i fortiden er alltid en feil, aldri en vilje.
+    if naar < datetime.now():
+        return _err(f"{naar:%d.%m.%Y kl. %H:%M} er tilbake i tid. "
+                    f"Velg et tidspunkt fram i tid, ellers blir innlegget "
+                    f"aldri publisert.")
 
     store.mark_verdict(mpath, manifest, idx, "liked")
     # Bildet ble ikke laget da forslaget kom, nettopp for å slippe å betale for

@@ -41,7 +41,25 @@
         </div>
       {% endif %}
 
-      {% if media %}
+      {% if slides %}
+        {# En karusell kan ikke vurderes på forsiden alene: poenget bygges opp over
+           slidene, og en svak side tre er en grunn til å si nei. #}
+        <div class="mt-4">
+          <div class="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2">
+            {% for s in slides %}
+              <div class="snap-center shrink-0 w-[85%] relative">
+                <img src="{{ s }}" alt="Slide {{ loop.index }}" loading="lazy"
+                     class="rounded-lg w-full border border-ink-700">
+                <span class="absolute top-2 right-2 text-xs bg-ink-950/80 rounded px-1.5 py-0.5 text-paper/70">
+                  {{ loop.index }}/{{ slides|length }}</span>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="text-xs text-paper/30 text-center">
+            Dra sidelengs for å se alle {{ slides|length }} slidene
+          </div>
+        </div>
+      {% elif media %}
         {# Innlegget vurderes på bilde og tekst sammen, så bildet er ferdig laget
            når forslaget havner i bunken. #}
         <img src="{{ media }}" alt="" loading="lazy"

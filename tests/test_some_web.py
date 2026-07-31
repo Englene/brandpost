@@ -7,7 +7,7 @@ ingen test går på nett. LinkedIn-publisering testes kun i dry-run.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -23,6 +23,15 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
     monkeypatch.delenv("LINKEDIN_ENABLED", raising=False)
     return TestClient(app)
+
+
+def _frem(dager: int = 7) -> str:
+    """Et tidspunkt fram i tid, på datetime-local-form.
+
+    Planlegging bakover er forbudt fra 31. juli 2026 (et innlegg ble planlagt til
+    feil år og ble bare liggende). Testene må derfor peke framover, ellers tester
+    de bare at sperren virker."""
+    return (datetime.now() + timedelta(days=dager)).strftime("%Y-%m-%dT10:00")
 
 
 def _make_manifest(vault, when: datetime | None = None) -> tuple[str, int]:
@@ -182,14 +191,14 @@ def test_schedule_skriver_tidspunkt_uten_nettleser(client, tmp_path):
     """valget 22. juli: VI eier publiseringen, saa knappen er et lynkjapt
     skriv. Ingen nettleser-subprosess som holder forespoerselen aapen i minutter."""
     day, nr = _make_manifest(tmp_path)
-    r = client.post(f"/some/api/draft/{day}/{nr}/schedule",
-                    data={"when": f"{day}T10:00"})
+    naar = _frem()
+    r = client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": naar})
     assert r.status_code == 200
     assert "Planlagt" in r.text and "e-post" in r.text
     _, manifest = store.load_manifest(tmp_path, day)
     d = manifest["drafts"][0]
     assert d["status"] == "planlagt"
-    assert d["scheduled_at"] == f"{day}T10:00"
+    assert d["scheduled_at"] == naar
 
 
 def test_schedule_avviser_ugyldig_tidspunkt(client, tmp_path, monkeypatch):
@@ -201,8 +210,7 @@ def test_schedule_avviser_ugyldig_tidspunkt(client, tmp_path, monkeypatch):
 
 def test_schedule_gjor_kortet_planlagt(client, tmp_path):
     day, nr = _make_manifest(tmp_path)
-    r = client.post(f"/some/api/draft/{day}/{nr}/schedule",
-                    data={"when": f"{day}T10:00"})
+    r = client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": _frem()})
     assert "🗓 planlagt" in r.text          # statuspille byttet
     # Planen skal ogsaa vite at slotten er planlagt
     from brandpost import plan as planmod
@@ -216,10 +224,12 @@ def test_planlagt_kan_endres_og_avlyses(client, tmp_path):
     """Glippe funnet 23. juli: naar et utkast forst var planlagt, forsvant
     tidsfeltet og tidspunktet satt fast."""
     day, nr = _make_manifest(tmp_path)
-    client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": f"{day}T10:00"})
-    r = client.get(f"/some/api/drafts?day={day}")
+    naar = _frem()
+    client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": naar})
+    # visningsdag(): et planlagt utkast hører hjemme på dagen det skal UT
+    r = client.get(f"/some/api/drafts?day={naar[:10]}")
     assert "Lagre nytt tidspunkt" in r.text and "Avlys" in r.text
-    assert f'value="{day}T10:00"' in r.text          # starter fra valgt tid
+    assert f'value="{naar}"' in r.text          # starter fra valgt tid
 
     r2 = client.post(f"/some/api/draft/{day}/{nr}/unschedule")
     assert "avlyst" in r2.text.lower()
@@ -384,13 +394,13 @@ def test_karusell_kan_faktisk_planlegges_via_knappen(client, tmp_path):
     midten 23. juli, og da sto sperren igjen i api_schedule."""
     mpath = _karusell_manifest(tmp_path)
 
-    r = client.post("/some/api/draft/2026-07-27/1/schedule",
-                    data={"when": "2026-07-28T10:00"})
+    naar = _frem()
+    r = client.post("/some/api/draft/2026-07-27/1/schedule", data={"when": naar})
 
     assert r.status_code == 200
     assert "kan ikke planlegges" not in r.text
     d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
-    assert d["status"] == "planlagt" and d["scheduled_at"] == "2026-07-28T10:00"
+    assert d["status"] == "planlagt" and d["scheduled_at"] == naar
 
 
 def test_karusell_kan_flyttes_i_kalenderen(client, tmp_path):
