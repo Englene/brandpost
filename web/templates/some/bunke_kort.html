@@ -111,16 +111,15 @@
     <div class="grid grid-cols-2 gap-3">
       <button hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/pass?brand={{ brand }}"
               hx-target="#bunke-kort" hx-swap="outerHTML"
-              data-bunke="nei"
               class="border border-ink-700 rounded-xl py-3 text-sm text-paper/60
                      hover:text-paper hover:border-red-900 hover:bg-red-950/30">
-        <span class="htmx-indicator">⏳ </span>Nei <span class="text-paper/30 ml-1">←</span>
+        <span class="htmx-indicator">⏳ </span>Nei
       </button>
-      <button type="button" data-bunke="ja"
+      <button type="button"
               onclick="document.getElementById('ja-form').classList.toggle('hidden')"
               class="border border-emerald-900 bg-emerald-950/30 rounded-xl py-3 text-sm
                      text-emerald-300 hover:bg-emerald-950/60">
-        Ja <span class="text-emerald-300/40 ml-1">→</span>
+        Ja
       </button>
     </div>
 

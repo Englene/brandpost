@@ -775,3 +775,15 @@ def test_tavla_skiller_forfalt_fra_publisert(tmp_path, monkeypatch):
     assert [r["headline"] for r in k["forfalt"]] == ["Strandet"]
     assert [r["headline"] for r in k["ute"]] == ["Faktisk ute"]
     assert k["forfalt"][0]["dager_siden"] == 1
+
+
+def test_ingen_hurtigtaster_i_bunken(bunke_client):
+    """Piltastene var raske, men en swipe lagrer en dom du ikke ser igjen, og de
+    kolliderte med den naturlige måten å bla i karusell-slidene på: du kunne stå
+    og lese side tre og plutselig ha sagt nei til hele innlegget (Oscar 31. juli).
+    Hver dom skal kreve et bevisst klikk."""
+    client, _, _ = bunke_client
+    r = client.get("/some/bunke")
+    assert "ArrowLeft" not in r.text
+    assert "ArrowRight" not in r.text
+    assert "keydown" not in r.text
