@@ -406,6 +406,46 @@ def mark_scheduled(manifest_path: Path, manifest: dict, idx: int,
         atomic_write_json(Path(manifest_path), manifest)
 
 
+# Karantene-vinduer. Hard sperre følger det som faktisk er ute eller på vei ut;
+# myk følger det eieren har swipet vekk. At de er ULIKE er hele poenget: et nei
+# betyr «ikke nå», ikke «aldri». Sperret vi avviste like lenge som planlagte,
+# gjentok vi feilen fra 22. juli 2026, da alt generert ble utestengt og åtte
+# vinkler brant uten at én var publisert (se used_angles).
+HARD_TOPIC_DAYS = 30
+SOFT_TOPIC_DAYS = 10
+
+
+def rejected_recently(vault: Path | None = None, now: datetime | None = None,
+                      days: int = SOFT_TOPIC_DAYS, n: int = 12) -> list[dict]:
+    """Det eieren nylig har swipet vekk, med overskrift og motiv.
+
+    blocked_topics gir bare EMNENE. Det holder til å sperre, men ikke til å lære:
+    sier eieren nei til fem forslag på rad, ligger signalet i hva slags vinkling
+    og tone de hadde, ikke bare hvilke temaer. Modellen trenger å se selve
+    forslagene for å kunne treffe bedre neste gang."""
+    now = now or datetime.now()
+    grense = now - timedelta(days=days)
+    ut: list[dict] = []
+    for mpath in sorted(socials_dir(vault).glob("*/manifest.json"), reverse=True):
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for d in manifest.get("drafts") or []:
+            if not isinstance(d, dict) or d.get("verdict") != "passed":
+                continue
+            nar = _draft_time(d, mpath.parent.name, ("verdict_at",))
+            if not nar or nar < grense:
+                continue
+            ut.append({"headline": d.get("headline", ""),
+                       "motif": (d.get("motif") or "")[:120],
+                       "pillar": d.get("pillar", ""),
+                       "emne": d.get("emne", "")})
+            if len(ut) >= n:
+                return ut
+    return ut
+
+
 def unjudged_drafts(vault: Path | None = None, brand_key: str = "") -> list[dict]:
     """Bunken: utkast som venter på en dom, eldste først.
 
@@ -479,23 +519,19 @@ def mark_verdict(manifest_path: Path, manifest: dict, idx: int, verdict: str) ->
         atomic_write_json(Path(manifest_path), manifest)
 
 
-# Karantene-vinduer for blocked_topics. Hard sperre følger det som faktisk er ute
-# eller på vei ut; myk følger det eieren har swipet vekk. At de er ULIKE er hele
-# poenget: et nei betyr «ikke nå», ikke «aldri». Sperret vi avviste like lenge som
-# planlagte, gjentok vi feilen fra 22. juli 2026, da alt generert ble utestengt og
-# åtte vinkler brant uten at én var publisert (se used_angles).
-HARD_TOPIC_DAYS = 30
-SOFT_TOPIC_DAYS = 10
-
-
 def blocked_topics(vault: Path | None = None, now: datetime | None = None,
                    hard_days: int = HARD_TOPIC_DAYS,
                    soft_days: int = SOFT_TOPIC_DAYS) -> dict[str, list[str]]:
     """Emner som ikke skal foreslås igjen ennå.
 
     → {"hard": [...], "soft": [...]}
-      hard: emner som er planlagt eller publisert de siste `hard_days`. Forbudt.
+      hard: emner som er planlagt eller publisert de siste `hard_days`, PLUSS
+            emnene til alt som allerede ligger uvurdert i bunken. Forbudt.
       soft: emner eieren har swipet vekk de siste `soft_days`. Unngå om mulig.
+
+    At bunkens egne emner er harde er ikke en tidsregel, men en unikhetsregel: ti
+    forslag skal ikke være tre varianter av samme poeng. Det er meningsløst å
+    swipe gjennom det samme tre ganger.
 
     Datoen leses fra utkastets egen tidslinje, ikke fra dagsmappa: et innlegg laget
     mandag kan være planlagt til fredag, og det er når det er UTE som avgjør hvor
@@ -527,6 +563,9 @@ def blocked_topics(vault: Path | None = None, now: datetime | None = None,
                 nar = _draft_time(d, dagsdato, ("verdict_at",))
                 if nar and nar >= soft_grense:
                     soft.setdefault(emne, None)
+            elif status == "proposed" and not d.get("verdict"):
+                # Ligger i bunken og venter på dom: emnet er opptatt uansett alder.
+                hard.setdefault(emne, None)
 
     return {"hard": list(hard), "soft": [e for e in soft if e not in hard]}
 

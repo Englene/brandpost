@@ -15,6 +15,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -691,7 +692,23 @@ def _bunke_ctx(v: Path, brand: str | None) -> dict:
         ctx["d"] = d
         ctx["kilder"] = [k for k in (d.get("kilder") or []) if isinstance(k, str)]
         ctx["suggest_dt"] = f"{_neste_postdag(v)}T{_suggest_time()}"
+        # Media-URL utledes lokalt fra filNAVN: stiene i manifestet er absolutte
+        # og maskinspesifikke, så et utkast generert på en annen maskin ville
+        # pekt på en sti som ikke finnes her.
+        ctx["media"] = _bunke_media(v, d)
     return ctx
+
+
+def _bunke_media(v: Path, d: dict) -> str:
+    """Bilde-URL for et bunke-kort, tom streng hvis bildekallet feilet."""
+    navn = d.get("cover_path") if d.get("type") == "karusell" else d.get("png_path")
+    if not navn:
+        return ""
+    day = d.get("day", "")
+    fil = (store.socials_dir(v) / day / Path(navn).name)
+    if not fil.is_file():
+        return ""
+    return f"/some/media/{day}/{Path(navn).name}?v={int(fil.stat().st_mtime)}"
 
 
 def _neste_postdag(v: Path) -> str:
@@ -716,10 +733,69 @@ def _neste_postdag(v: Path) -> str:
     return (date.today() + timedelta(days=1)).isoformat()
 
 
+# Under denne vannstanden bestilles påfyll. Fem er ikke tilfeldig: ett bilde tar
+# rundt 21 sekunder, så ti nye er klare på et par minutter med parallellitet,
+# mens eieren bruker lengre tid enn det på å vurdere de fem som er igjen. Da
+# møter han aldri en tom bunke, bortsett fra aller første gang.
+BUNKE_MIN = int(os.environ.get("BRANDPOST_BUNKE_MIN", "5"))
+BUNKE_PAAFYLL = int(os.environ.get("BRANDPOST_BUNKE_PAAFYLL", "10"))
+
+
+def _etterfyll_bunke(brand: str) -> bool:
+    """Bestill nye forslag i bakgrunnen. Returnerer True hvis en kjøring ble startet.
+
+    Kjøres detached (start_new_session) fordi den tar minutter: holdt vi
+    forespørselen åpen, ville swipen fryse midt i økta. En lås hindrer at to
+    påfyll kjører samtidig og lager tjue forslag i stedet for ti.
+
+    NB: dette virker bare når web-tjenesten kjører som launchd-agent i
+    gui-domenet. Modellkallet trenger Keychain, og over ren ssh feiler det med
+    401 uansett hvor riktig PATH-en er (se «modellfri over ssh» i
+    meetingnotes/looper/DEPLOY.md). Skal du teste påfyllet manuelt, gjør det
+    gjennom dashbordet, ikke fra en ssh-økt."""
+    merke = brand if brand and brand != ALLE_MERKER else (brandkit.enabled_brands() or ["demo"])[0]
+    laas = store.socials_dir(vault_path()) / ".bunke-paafyll.lock"
+    try:
+        # O_EXCL: den som lager fila vinner, resten lar være.
+        fd = os.open(laas, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        # Eldre enn 15 min er en død lås etter en krasj, ikke en kjøring.
+        try:
+            if time.time() - laas.stat().st_mtime > 900:
+                laas.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
+    os.close(fd)
+
+    logg = Path.home() / ".notater" / "some-bunke.log"
+    logg.parent.mkdir(parents=True, exist_ok=True)
+    with open(logg, "ab") as f:
+        f.write(f"\n--- påfyll {datetime.now():%F %T} merke={merke} ---\n".encode())
+        subprocess.Popen(
+            [sys.executable, "-m", "brandpost.cli", "run",
+             "--brand", merke, "--bunke", str(BUNKE_PAAFYLL)],
+            stdout=f, stderr=subprocess.STDOUT, start_new_session=True,
+            cwd=str(Path.cwd()),
+        )
+    return True
+
+
+def _kanskje_etterfyll(igjen: int, brand: str) -> bool:
+    if igjen > BUNKE_MIN:
+        return False
+    return _etterfyll_bunke(brand)
+
+
 @router.get("/bunke", response_class=HTMLResponse)
 def bunke(request: Request, brand: str | None = None):
     ctx = _bunke_ctx(vault_path(), brand)
     ctx["merker"] = merker_ctx(ctx["brand"])
+    # Også ved åpning, ikke bare ved swipe: kommer du tilbake til en bunke som
+    # alt er tom, skal påfyllet være i gang før du rekker å lure på hvorfor det
+    # ikke skjer noe.
+    if _kanskje_etterfyll(ctx["igjen"], ctx["brand"]):
+        ctx["flash"] = f"Henter {BUNKE_PAAFYLL} nye forslag i bakgrunnen."
     return templates.TemplateResponse(request, "some/bunke.html", ctx)
 
 
@@ -735,8 +811,10 @@ def api_bunke_pass(request: Request, day: str, nr: int, brand: str | None = None
     v = vault_path()
     mpath, manifest, idx, _ = _resolve(v, day, nr)
     store.mark_verdict(mpath, manifest, idx, "passed")
-    return templates.TemplateResponse(request, "some/bunke_kort.html",
-                                      _bunke_ctx(v, brand))
+    ctx = _bunke_ctx(v, brand)
+    if _kanskje_etterfyll(ctx["igjen"], ctx["brand"]):
+        ctx["flash"] = f"Henter {BUNKE_PAAFYLL} nye forslag i bakgrunnen."
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 
 @router.post("/api/bunke/{day}/{nr}/like", response_class=HTMLResponse)
@@ -772,6 +850,8 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(...),
     ctx = _bunke_ctx(v, brand)
     naar = f"{when[8:10]}.{when[5:7]} kl. {when[11:16]}"
     ctx["flash"] = f"Planlagt {naar}."
+    if _kanskje_etterfyll(ctx["igjen"], ctx["brand"]):
+        ctx["flash"] += f" Henter {BUNKE_PAAFYLL} nye i bakgrunnen."
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 

@@ -41,11 +41,17 @@
         </div>
       {% endif %}
 
-      {% if d.motif %}
-        {# Bildet finnes ikke ennå: det lages først hvis du sier ja. Derfor vises
-           motiv-beskrivelsen, så du vet hva du godkjenner. #}
+      {% if media %}
+        {# Innlegget vurderes på bilde og tekst sammen, så bildet er ferdig laget
+           når forslaget havner i bunken. #}
+        <img src="{{ media }}" alt="" loading="lazy"
+             class="mt-4 rounded-lg w-full border border-ink-700">
+      {% elif d.motif %}
+        {# Bildekallet feilet for dette ene. Teksten er verdt å vurdere likevel,
+           og motivet sier hva bildet skulle vært. #}
         <div class="mt-4 text-xs text-paper/40 border border-dashed border-ink-700 rounded-lg p-3">
-          <span class="text-paper/50">Tenkt bilde:</span> {{ d.motif }}
+          <span class="text-amber-400/70">Bildet feilet.</span>
+          <span class="text-paper/50">Tenkt motiv:</span> {{ d.motif }}
         </div>
       {% endif %}
 

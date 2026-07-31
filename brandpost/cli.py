@@ -212,7 +212,18 @@ def _render_posts(vault: Path, brand, posts: list[dict],
                 print(f"  🎠 {ds} karusell: {built['n']} slides, {built['size_mb']} MB "
                       f"→ {meta['headline'][:44]}")
             else:
-                result = rendermod.render_post(spec, brand=brand, seq=bilde_seq)
+                try:
+                    result = rendermod.render_post(spec, brand=brand, seq=bilde_seq)
+                except Exception as e:  # noqa: BLE001
+                    # Ett feilet bildekall skal ikke rive med seg de andre ni.
+                    # Utkastet lagres uten bilde og kan regenereres fra kortet;
+                    # teksten er det dyre å lage på nytt, ikke motivet.
+                    bilde_seq += 1
+                    meta = store.write_draft(vault, brand.key, spec, None, index=i, when=when)
+                    drafts.append(meta)
+                    print(f"  ⚠️  {ds} post uten bilde ({type(e).__name__}): "
+                          f"{meta['headline'][:36]}", file=sys.stderr)
+                    continue
                 bilde_seq += 1
                 meta = store.write_draft(vault, brand.key, spec, result["png"], index=i, when=when)
                 meta["how"] = result["how"]
@@ -551,6 +562,18 @@ def _normalize_pillars(posts: list[dict], brand) -> None:
         p["pillar"] = pid if pid in valid else ("annet" if pid else "")
 
 
+def _slipp_bunkelaas(vault) -> None:
+    """Fjern påfyll-låsen dashbordet satte.
+
+    Låsa hindrer at to påfyll kjører samtidig og lager tjue forslag i stedet for
+    ti. Slippes den ikke her, blir den stående til 15-minutters foreldelsen slår
+    inn, og eieren står med en bunke som ikke fylles."""
+    try:
+        (store.socials_dir(vault) / ".bunke-paafyll.lock").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _emne_block(sperret: dict) -> str:
     """Karantene-blokka i brukermeldingen. Tom når ingenting er sperret."""
     hard, soft = sperret.get("hard") or [], sperret.get("soft") or []
@@ -566,6 +589,20 @@ def _emne_block(sperret: dict) -> str:
         ut += ("\nUNNGÅ OM MULIG (eieren swipet disse vekk nylig; de kan komme "
                "tilbake senere, men ikke nå):\n" + json.dumps(soft, ensure_ascii=False))
     return ut
+
+
+def _avvist_block(avvist: list[dict]) -> str:
+    """Det eieren nylig sa nei til, som mønster og ikke bare som sperreliste.
+
+    Emne-karantenen stenger de konkrete poengene. Denne blokka finnes for det
+    andre signalet: HVA SLAGS forslag som ikke traff. Fem nei på rad sier noe om
+    tone og vinkling som fem sperrede emner ikke fanger."""
+    if not avvist:
+        return ""
+    return ("\n\nAVVIST AV EIEREN NYLIG (han swipet disse vekk). Se etter mønsteret, "
+            "ikke bare temaet: hva slags vinkling, tone eller motivtype traff ikke? "
+            "Unngå den formen, ikke bare disse sakene:\n"
+            + json.dumps(avvist, ensure_ascii=False))
 
 
 def _guard_topics(posts: list[dict], sperret: dict) -> list[dict]:
@@ -604,8 +641,12 @@ def cmd_run(args) -> int:
     # Slot-fylling: hver kjøring fyller ukas ÅPNE plan-slots (ett utkast per
     # publiseringsdag framover), ikke flere varianter for samme dag. Uten plan
     # faller vi tilbake til args.n utkast for i dag.
-    slots = planmod.open_slots(vault, brand_key=args.brand, days=7)
-    n = len(slots) or args.n
+    # Bunke-modus: frie forslag uten slot-binding. Planen fordeler ÉN idé per
+    # publiseringsdag, mens bunken skal gi eieren noe å velge mellom, så her er
+    # slots feil verktøy.
+    bunke = getattr(args, "bunke", None)
+    slots = [] if bunke else planmod.open_slots(vault, brand_key=args.brand, days=7)
+    n = bunke or len(slots) or args.n
     slot_block = ""
     if slots:
         slot_block = ("\n\nÅPNE PLAN-SLOTS (lag NØYAKTIG ett utkast per slot: sett "
@@ -630,6 +671,7 @@ def cmd_run(args) -> int:
               "foreslått før uten å bli publisert:\n"
             + json.dumps(angles, ensure_ascii=False)
             + _emne_block(sperret)
+            + _avvist_block(store.rejected_recently(vault))
             + ("\n\nLÆRDOMMER (hva som har funket, bruk det):\n" + lessons if lessons else "")
             + slot_block
             + "\n\nVARIASJON (rettingen 22. juli): bytt ÅPNINGSGREP mellom "
@@ -649,12 +691,14 @@ def cmd_run(args) -> int:
     posts = out.get("posts") or []
     if not posts:
         print("  ⚠️  modellen ga ingen utkast", file=sys.stderr)
+        _slipp_bunkelaas(vault)
         return 1
     _normalize_pillars(posts, brand)
     posts = _guard_topics(posts, sperret)
     if not posts:
         print("  ⚠️  alle utkast traff emne-karantenen, ingenting å rendre",
               file=sys.stderr)
+        _slipp_bunkelaas(vault)
         return 1
     valid_dates = {s["date"] for s in slots}
     for p in posts:  # ukjent/påfunnet slot_date -> i dag (render-fallback)
@@ -665,6 +709,13 @@ def cmd_run(args) -> int:
     specs_path.write_text(json.dumps({"brand": args.brand, "posts": posts}, ensure_ascii=False),
                           encoding="utf-8")
     safe, _paths = _render_posts(vault, brand, posts)
+    if bunke:
+        # Ingen slot-merking (forslagene tilhører ingen dag ennå) og ingen e-post:
+        # bunken ER flaten. En epost per påfyll ville gitt eieren ti varsler om
+        # noe han allerede står og ser på.
+        _slipp_bunkelaas(vault)
+        print(f"  🗂  {len(safe)} forslag lagt i bunken")
+        return 0
     for ds in sorted({d.get("date") for d in safe} & valid_dates):
         planmod.mark_slot(vault, ds, "utkast", draft_ref={"manifest": ds})
     dry = True if args.dry_run else None
@@ -719,6 +770,10 @@ def main(argv=None) -> int:
     p_run.add_argument("--n", type=int, default=3)
     p_run.add_argument("--days", type=int, default=10)
     p_run.add_argument("--dry-run", action="store_true")
+    p_run.add_argument("--bunke", type=int, metavar="N",
+                       help="fyll bunken med N frie forslag i stedet for å fylle "
+                            "plan-slots. Sender ingen e-post: bunken ER flaten, "
+                            "og eieren swiper dem der")
     p_run.set_defaults(func=cmd_run)
 
     p_pub = sub.add_parser("publish", help="publiser ETT valgt utkast til LinkedIn (menneske-gated)")

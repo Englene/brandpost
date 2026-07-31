@@ -14,6 +14,7 @@ generert ble sperret og åtte vinkler brant uten at én var publisert.
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -172,12 +173,28 @@ def test_utkast_uten_emne_ignoreres(tmp_path):
     assert res == {"hard": [], "soft": []}
 
 
-def test_forslag_uten_dom_sperrer_ingenting(tmp_path):
-    """Et utkast som bare ligger der, verken likt eller avvist, skal ikke stenge
-    emnet sitt. Det var nettopp den feilen recent_angles gjorde."""
+def test_uvurdert_forslag_sperrer_emnet_sitt_for_unikhet(tmp_path):
+    """Ligger et forslag i bunken og venter på dom, er emnet opptatt. Ti forslag
+    skal ikke være tre varianter av samme poeng: det er meningsløst å swipe
+    gjennom det samme tre ganger.
+
+    Merk at dette IKKE er en tidsregel som de to andre. Sperren varer bare så
+    lenge forslaget ligger der: sier eieren nei, flyttes emnet til den myke lista
+    og kan komme tilbake senere."""
     _dag(tmp_path, "2026-07-30", [{"emne": "urørt", "status": "proposed"}])
     res = store.blocked_topics(tmp_path, now=NOW)
-    assert res == {"hard": [], "soft": []}
+    assert res["hard"] == ["urørt"]
+
+
+def test_emnet_frigjoeres_naar_forslaget_avvises(tmp_path):
+    """Overgangen fra «opptatt i bunken» til «swipet vekk»: emnet skal falle ut
+    av hard-lista og ned i den myke, ellers hadde et nei vært hardere enn et ja."""
+    _dag(tmp_path, "2026-07-30", [{"emne": "urørt", "status": "proposed",
+                                   "verdict": "passed",
+                                   "verdict_at": "2026-07-30T09:00"}])
+    res = store.blocked_topics(tmp_path, now=NOW)
+    assert res["hard"] == []
+    assert res["soft"] == ["urørt"]
 
 
 def test_taaler_uleselig_manifest(tmp_path):
@@ -270,8 +287,30 @@ def test_bunken_viser_forste_kort(bunke_client):
     assert r.status_code == 200
     assert "Betalt inn, ikke hentet ut" in r.text
     assert "2 igjen i bunken" in r.text
-    # Bildet finnes ikke ennå, så motivet må beskrives i stedet.
-    assert "Tenkt bilde" in r.text
+
+
+def test_kortet_viser_bildet_naar_det_finnes(bunke_client):
+    """Et LinkedIn-innlegg vurderes på bilde og tekst sammen, så bildet er ferdig
+    laget når forslaget havner i bunken."""
+    client, tmp_path, mpath = bunke_client
+    d = store.socials_dir(tmp_path) / "2026-07-31"
+    png = d / "post-1-demo-betalt-inn.png"
+    png.write_bytes(b"\x89PNG-fake")
+    m = json.loads(mpath.read_text(encoding="utf-8"))
+    m["drafts"][0]["png_path"] = str(png)
+    mpath.write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+
+    r = client.get("/some/bunke")
+    assert f"/some/media/2026-07-31/{png.name}" in r.text
+    assert "Bildet feilet" not in r.text
+
+
+def test_kortet_faller_tilbake_paa_motivet_naar_bildet_mangler(bunke_client):
+    """Ett feilet bildekall skal ikke skjule teksten: den er det dyre å lage."""
+    client, _, _ = bunke_client          # fixturen har png_path=""
+    r = client.get("/some/bunke")
+    assert "Bildet feilet" in r.text
+    assert "flat vektor" in r.text       # motivet vises som erstatning
 
 
 def test_nei_lagrer_dom_og_gaar_videre(bunke_client):
@@ -341,3 +380,90 @@ def test_kalenderen_har_lenke_til_bunken(bunke_client):
     client, _, _ = bunke_client
     r = client.get("/some")
     assert "/some/bunke" in r.text
+
+
+# ── Etterfyll ────────────────────────────────────────────────────────────────
+
+def test_etterfyll_trigges_naar_bunken_synker_til_terskelen(bunke_client, monkeypatch):
+    """Påfyll skal bestilles FØR bunken er tom. Ett bilde tar rundt 21 sekunder,
+    så ti nye trenger et par minutter, og eieren skal ikke stå og vente."""
+    client, _, _ = bunke_client
+    from web import app as somemod
+
+    startet: list[str] = []
+    monkeypatch.setattr(somemod, "_etterfyll_bunke", lambda brand: startet.append(brand) or True)
+    monkeypatch.setattr(somemod, "BUNKE_MIN", 1)
+
+    # 2 i bunken, terskel 1: første nei tar den til 1 og skal utløse påfyll.
+    r = client.post("/some/api/bunke/2026-07-31/1/pass")
+    assert startet, "påfyll ble ikke bestilt"
+    assert "nye forslag i bakgrunnen" in r.text
+
+
+def test_etterfyll_venter_naar_det_er_nok_igjen(bunke_client, monkeypatch):
+    client, _, _ = bunke_client
+    from web import app as somemod
+    startet: list[str] = []
+    monkeypatch.setattr(somemod, "_etterfyll_bunke", lambda brand: startet.append(brand) or True)
+    monkeypatch.setattr(somemod, "BUNKE_MIN", 0)      # aldri påfyll
+    client.post("/some/api/bunke/2026-07-31/1/pass")
+    assert startet == []
+
+
+def test_laasen_hindrer_to_paafyll_samtidig(bunke_client, monkeypatch):
+    """Uten lås ville to raske swipes bestilt tjue forslag i stedet for ti."""
+    client, tmp_path, _ = bunke_client
+    from web import app as somemod
+
+    kjort: list[list[str]] = []
+    monkeypatch.setattr(somemod.subprocess, "Popen",
+                        lambda cmd, **kw: kjort.append(cmd) or None)
+    assert somemod._etterfyll_bunke("demo") is True
+    assert somemod._etterfyll_bunke("demo") is False    # låst
+    assert len(kjort) == 1
+    assert "--bunke" in kjort[0]
+
+    # cli slipper låsen når kjøringen er ferdig
+    from brandpost import cli
+    cli._slipp_bunkelaas(tmp_path)
+    assert somemod._etterfyll_bunke("demo") is True
+
+
+def test_doed_laas_foreldes(bunke_client, monkeypatch):
+    """En lås fra en krasjet kjøring skal ikke stenge bunken for alltid."""
+    client, tmp_path, _ = bunke_client
+    from web import app as somemod
+    monkeypatch.setattr(somemod.subprocess, "Popen", lambda cmd, **kw: None)
+
+    laas = store.socials_dir(tmp_path) / ".bunke-paafyll.lock"
+    laas.parent.mkdir(parents=True, exist_ok=True)
+    laas.write_text("")
+    import os as _os
+    gammelt = time.time() - 1200                      # 20 min
+    _os.utime(laas, (gammelt, gammelt))
+
+    assert somemod._etterfyll_bunke("demo") is False  # rydder den døde låsen
+    assert somemod._etterfyll_bunke("demo") is True   # og slipper neste gjennom
+
+
+# ── Avviste som mønster, ikke bare sperreliste ───────────────────────────────
+
+def test_rejected_recently_gir_overskrift_og_motiv(tmp_path):
+    """blocked_topics gir emnene. Modellen trenger selve forslagene for å se HVA
+    SLAGS vinkling som ikke traff."""
+    _dag(tmp_path, "2026-07-30", [
+        {"headline": "Den som ikke traff", "motif": "grå graf", "emne": "a",
+         "pillar": "data-bevis", "verdict": "passed", "verdict_at": "2026-07-30T09:00"},
+        {"headline": "For gammel", "emne": "b", "verdict": "passed",
+         "verdict_at": "2026-07-01T09:00"},
+    ])
+    ut = store.rejected_recently(tmp_path, now=NOW)
+    assert [x["headline"] for x in ut] == ["Den som ikke traff"]
+    assert ut[0]["motif"] == "grå graf"
+
+
+def test_avvist_block_ber_om_moenster_ikke_bare_tema():
+    from brandpost import cli
+    blokk = cli._avvist_block([{"headline": "H", "motif": "m", "emne": "e"}])
+    assert "mønsteret" in blokk
+    assert cli._avvist_block([]) == ""
