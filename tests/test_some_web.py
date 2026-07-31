@@ -46,8 +46,17 @@ def test_home_renders(client):
     assert "SoMe-kommandosenter" in r.text
 
 
-def test_calendar_shows_draft_and_slot(client, tmp_path):
+def test_calendar_shows_scheduled_draft_and_slot(client, tmp_path):
+    """Kalenderen viser plan-slots og det som faktisk skal ut.
+
+    Fram til 31. juli 2026 viste den ALLE utkast, også de uvurderte. Da bunken
+    kom, druknet de fire innleggene som er ekte avtaler i tjue som bare er
+    forslag, så uvurderte hører nå hjemme i bunken (se neste test)."""
     day, nr = _make_manifest(tmp_path)
+    mpath, manifest = store.load_manifest(tmp_path, day)
+    idx, _ = store.select_draft(manifest, str(nr))
+    store.mark_scheduled(mpath, manifest, idx, f"{day}T10:00")
+
     d = tmp_path / "socials"
     (d / "plan.json").write_text(json.dumps({"weeks": [], "slots": [
         {"date": day, "brand": "demo", "pillar": "myte-avliving", "format": "bilde",
@@ -56,6 +65,14 @@ def test_calendar_shows_draft_and_slot(client, tmp_path):
     r = client.get(f"/some/api/calendar?month={day[:7]}")
     assert r.status_code == 200
     assert "Testkort" in r.text and "Slot-tema" in r.text
+
+
+def test_calendar_skjuler_uvurderte_forslag(client, tmp_path):
+    """Et forslag som verken er planlagt eller publisert skal IKKE ligge i
+    kalenderen: det er ikke en avtale, bare et forslag som venter på dom."""
+    day, _nr = _make_manifest(tmp_path)          # status «proposed»
+    r = client.get(f"/some/api/calendar?month={day[:7]}")
+    assert "Testkort" not in r.text
 
 
 def test_day_panel_edit_writes_manifest(client, tmp_path):

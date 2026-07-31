@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -467,3 +467,255 @@ def test_avvist_block_ber_om_moenster_ikke_bare_tema():
     blokk = cli._avvist_block([{"headline": "H", "motif": "m", "emne": "e"}])
     assert "mønsteret" in blokk
     assert cli._avvist_block([]) == ""
+
+
+# ── Retting etter tilbakemelding ─────────────────────────────────────────────
+# 31. juli 2026: et utkast påsto «rundt 15,7 milliarder kroner» fra Horisont
+# Europa, mens kilden det selv viste til sier 10,6. Generering via `cli run` gjør
+# ingen websøk, så tall og kilder kommer fra modellens hukommelse og verifiseres
+# ikke. Til den rotårsaken er løst er eierens øye siste skanse, og da må han kunne
+# si fra med ord.
+
+def _mock_revise(monkeypatch, ut: dict):
+    from brandpost import revise
+    monkeypatch.setattr(revise, "structured_call",
+                        lambda *a, **k: {"structured_output": ut})
+
+
+def test_retting_skriver_om_tekst_og_lagrer_rettelsen(bunke_client, monkeypatch):
+    client, _, mpath = bunke_client
+    _mock_revise(monkeypatch, {
+        "headline": "Kontingenten kommer hjem",
+        "body": "Norske miljøer har hentet rundt 10,6 milliarder kroner.",
+        "why_now": "fordi", "motif": "nytt motiv", "emne": "horisont-retur",
+        "kilder": ["10,6 mrd kr → https://innovasjonnorge.no/x"],
+        "endret": "Rettet tallet fra 15,7 til 10,6 mrd.",
+    })
+    monkeypatch.setattr("brandpost.render.render_post",
+                        lambda *a, **k: {"png": b"\x89PNG", "how": "mock"})
+
+    r = client.post("/some/api/bunke/2026-07-31/1/rett",
+                    data={"note": "tallet er feil, kilden sier 10,6 mrd"})
+    assert r.status_code == 200
+    assert "Rettet tallet fra 15,7 til 10,6" in r.text
+
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert "10,6 milliarder" in d["body"]
+    assert d["emne"] == "horisont-retur"
+    # Rettelsen må huskes, ellers kommer feilen tilbake ved neste forsøk
+    assert "tallet er feil, kilden sier 10,6 mrd" in d["spec"]["corrections"]
+    # og bildet skal være laget på nytt
+    assert d["png_path"] and Path(d["png_path"]).exists()
+
+
+def test_retting_beholder_utkastet_i_bunken(bunke_client, monkeypatch):
+    """En retting er verken ja eller nei: forslaget skal fortsatt vente på dom."""
+    client, _, mpath = bunke_client
+    _mock_revise(monkeypatch, {"headline": "H", "body": "ny tekst", "endret": "ok"})
+    monkeypatch.setattr("brandpost.render.render_post",
+                        lambda *a, **k: {"png": b"\x89PNG", "how": "mock"})
+    client.post("/some/api/bunke/2026-07-31/1/rett", data={"note": "for skråsikker"})
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["status"] == "proposed"
+    assert "verdict" not in d
+
+
+def test_tom_tilbakemelding_avvises(bunke_client):
+    client, _, mpath = bunke_client
+    r = client.post("/some/api/bunke/2026-07-31/1/rett", data={"note": "   "})
+    assert "Skriv hva som er galt" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["body"] == "brødtekst"          # urørt
+
+
+def test_bildefeil_beholder_den_rettede_teksten(bunke_client, monkeypatch):
+    """Teksten er det viktige. Ryker bildekallet, skal rettingen likevel stå."""
+    client, _, mpath = bunke_client
+    _mock_revise(monkeypatch, {"headline": "H", "body": "rettet tekst", "endret": "ok"})
+
+    def _sprekk(*a, **k):
+        raise RuntimeError("bildetjenesten svarte ikke")
+    monkeypatch.setattr("brandpost.render.render_post", _sprekk)
+
+    r = client.post("/some/api/bunke/2026-07-31/1/rett", data={"note": "feil tall"})
+    assert "bildet feilet" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["body"] == "rettet tekst"
+
+
+def test_rettelser_akkumuleres_og_kappes():
+    """Alle tidligere rettelser skal følge med i prompten: et problem eieren har
+    påpekt én gang skal ikke komme tilbake i neste forsøk."""
+    from brandpost import revise
+    sett: dict = {}
+
+    def _fanger(system, user, schema, label=""):
+        sett["user"] = user
+        return {"structured_output": {"headline": "H", "body": "B", "endret": "e"}}
+
+    import brandpost.revise as rv
+    gammel = rv.structured_call
+    rv.structured_call = _fanger
+    try:
+        draft = {"brand": "demo", "headline": "H", "body": "B",
+                 "spec": {"corrections": ["første feil", "andre feil"]}}
+        rv.revise_draft(draft, "tredje feil")
+        assert "første feil" in sett["user"]
+        assert "tredje feil" in sett["user"]
+        # kappes til de nyeste
+        mange = {"brand": "demo", "headline": "H", "body": "B",
+                 "spec": {"corrections": [f"feil {i}" for i in range(20)]}}
+        res = rv.revise_draft(mange, "ny")
+        assert len(res["felter"]["spec"]["corrections"]) <= rv.MAX_RETTELSER
+    finally:
+        rv.structured_call = gammel
+
+
+# ── Tall uten kilde ──────────────────────────────────────────────────────────
+
+def test_flagger_tall_som_ikke_finnes_i_kildene():
+    from brandpost import cli
+    posts = [
+        {"headline": "A", "body": "Norge hentet 15,7 milliarder kroner.",
+         "kilder": ["returandel 3,23 % → https://x.no"]},
+        {"headline": "B", "body": "Returandelen er 3,23 prosent.",
+         "kilder": ["returandel 3,23 prosent → https://x.no"]},
+        {"headline": "C", "body": "Ingen tall her.", "kilder": []},
+    ]
+    cli._flagg_udekkede_tall(posts)
+    assert posts[0]["tall_uten_kilde"]                 # 15,7 mrd står ikke i kilden
+    assert "tall_uten_kilde" not in posts[1]           # dekket
+    assert "tall_uten_kilde" not in posts[2]           # ingen tall å dekke
+
+
+def test_tall_uten_noen_kilder_flagges_med_selve_tallet():
+    """Flagget skal si HVILKET tall som mangler dekning, ikke bare at noe gjør
+    det: eieren skal kunne se etter akkurat den påstanden i teksten."""
+    from brandpost import cli
+    posts = [{"headline": "A", "body": "19 prosent av alt.", "kilder": []}]
+    cli._flagg_udekkede_tall(posts)
+    assert posts[0]["tall_uten_kilde"] == ["19 prosent"]
+
+
+def test_flagget_sperrer_ikke_utkastet():
+    """Advarsel, ikke sperre: å forkaste alt med tall ville tømt bunken, og et
+    tall kan være riktig selv om kilde-linja er formulert annerledes."""
+    from brandpost import cli
+    posts = [{"headline": "A", "body": "15,7 milliarder.", "kilder": [], "emne": "x"}]
+    cli._flagg_udekkede_tall(posts)
+    beholdt = cli._guard_topics(posts, {"hard": [], "soft": []})
+    assert len(beholdt) == 1
+
+
+def test_kildekravet_sier_at_nettsoek_mangler():
+    """Prompten ba før om «URL fra nettsøk» i en kjøring UTEN nettsøk. Den
+    motsigelsen er grunnen til at modellen fant på URL-er."""
+    from brandpost import cli
+    assert "DU HAR IKKE NETTSØK" in cli._RUN_SYSTEM
+    assert "Skriv ALDRI en URL du ikke har fått i konteksten" in cli._RUN_SYSTEM
+
+
+def test_laasen_slippes_ogsaa_naar_genereringen_kaster(tmp_path, monkeypatch):
+    """Låsen ble før bare sluppet i suksess-veien, så en ModelError blokkerte alt
+    påfyll til 15-minutters foreldelsen slo inn. Det skjedde første gang
+    bunke-modus møtte ekte data: ti utkast sprengte modell-timeouten."""
+    from brandpost import cli
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    laas = store.socials_dir(tmp_path) / ".bunke-paafyll.lock"
+    laas.parent.mkdir(parents=True, exist_ok=True)
+    laas.write_text("")
+
+    def _sprekk(args):
+        raise RuntimeError("modellen svarte ikke")
+    monkeypatch.setattr(cli, "_cmd_run", _sprekk)
+
+    class A:
+        bunke = 10
+        vault = str(tmp_path)
+    with pytest.raises(RuntimeError):
+        cli.cmd_run(A())
+    assert not laas.exists(), "låsen henger etter en feilet kjøring"
+
+
+def test_timeouten_skalerer_med_bunkestoerrelsen(monkeypatch, tmp_path):
+    """Ett utkast trenger ikke fem minutter; ti trenger mer enn fem."""
+    from brandpost import cli
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    sett: dict = {}
+
+    from brandpost import model as loop_model
+    def _fanger(system, user, schema, label="", timeout=300, model=None):
+        sett["timeout"] = timeout
+        return {"structured_output": {"posts": []}}
+    monkeypatch.setattr(loop_model, "structured_call", _fanger)
+
+    class A:
+        brand = "demo"
+        n = 3
+        days = 5
+        dry_run = True
+        bunke = 10
+        vault = str(tmp_path)
+    cli.cmd_run(A())
+    assert sett["timeout"] >= 600, "ti utkast må få mer enn standardtimeouten"
+
+
+# ── Tidsvelger og tavle ──────────────────────────────────────────────────────
+
+def test_ledige_tider_er_publiseringsdager_med_opptatte_merket(tmp_path, monkeypatch):
+    """Et fritt datofelt lot to innlegg havne på samme dag uten at det var synlig
+    før etterpå. Nedtrekket viser hele bildet mens du velger."""
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    from web import app as somemod
+    from brandpost import plan as planmod
+
+    ledige = somemod._ledige_tider(tmp_path)
+    assert ledige, "ingen kommende publiseringsdager"
+    # Kun faktiske publiseringsdager, aldri helg
+    for t in ledige:
+        d = datetime.strptime(t["verdi"][:10], "%Y-%m-%d").date()
+        assert d.weekday() in planmod.POST_DAYS
+        assert d > date.today()
+    assert all(not t["opptatt"] for t in ledige)
+
+
+def test_opptatt_dag_merkes_med_hva_som_ligger_der(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    from web import app as somemod
+    forste = somemod._ledige_tider(tmp_path)[0]["verdi"][:10]
+    _dag(tmp_path, "2026-01-02", [{"headline": "Allerede booket", "status": "planlagt",
+                                   "scheduled_at": f"{forste}T10:00"}])
+    ledige = somemod._ledige_tider(tmp_path)
+    treff = [t for t in ledige if t["verdi"][:10] == forste]
+    assert treff and treff[0]["opptatt"]
+    assert treff[0]["hva"] == "Allerede booket"
+    # og forvalget skal hoppe over den
+    assert somemod._neste_postdag(tmp_path) != forste
+
+
+def test_tavla_deler_i_denne_uka_senere_og_ute(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    from web import app as somemod
+    idag = date.today()
+    senere = idag + timedelta(days=30)
+    _dag(tmp_path, "2026-01-02", [
+        {"headline": "Ute nå", "status": "published", "brand": "demo",
+         "published_at": f"{(idag - timedelta(days=3)).isoformat()}T10:00"},
+        {"headline": "Langt fram", "status": "planlagt", "brand": "demo",
+         "scheduled_at": f"{senere.isoformat()}T10:00"},
+        {"headline": "Bare et forslag", "status": "proposed", "brand": "demo"},
+    ])
+    ctx = somemod._tavle_ctx(tmp_path, "demo")
+    alle = [r["headline"] for k in ctx["kolonner"].values() for r in k]
+    assert "Ute nå" in alle
+    assert "Langt fram" in alle
+    # Forslag hører hjemme i bunken, ikke på tavla
+    assert "Bare et forslag" not in alle
+    assert [r["headline"] for r in ctx["kolonner"]["senere"]] == ["Langt fram"]
+
+
+def test_tavla_svarer(bunke_client):
+    client, _, _ = bunke_client
+    r = client.get("/some/tavle")
+    assert r.status_code == 200
+    assert "Tavla" in r.text

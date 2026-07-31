@@ -55,15 +55,40 @@
         </div>
       {% endif %}
 
+      {% if d.spec and d.spec.tall_uten_kilde %}
+        {# Genereringen har ikke nettsøk og kan ikke etterprøve noe selv. Tall
+           uten dekning i kildene er derfor modellens hukommelse, ikke et faktum. #}
+        <div class="mt-4 text-xs border border-amber-800/70 bg-amber-950/30 rounded-lg p-3">
+          <span class="text-amber-300">Sjekk disse tallene selv:</span>
+          <span class="text-paper/70">{{ d.spec.tall_uten_kilde|join(', ') }}</span>
+          <div class="text-paper/40 mt-1">
+            De står ikke i kildene under. Bruk «noe er galt» hvis de ikke stemmer.
+          </div>
+        </div>
+      {% endif %}
+
       {% if kilder %}
-        <details class="mt-4 text-xs text-paper/40">
-          <summary class="cursor-pointer hover:text-paper/70">Kilder ({{ kilder|length }})</summary>
+        {# Åpen som standard, ikke skjult bak et klikk. Tallene i teksten er
+           modellens påstander og verifiseres ikke av noe, så kildene må stå der
+           du faktisk ser dem mens du vurderer. #}
+        <details class="mt-4 text-xs text-paper/40" open>
+          <summary class="cursor-pointer hover:text-paper/70">Kilder ({{ kilder|length }}) — sjekk tallene mot disse</summary>
           <ul class="mt-2 space-y-1">
             {% for k in kilder %}<li class="break-all">{{ k }}</li>{% endfor %}
           </ul>
         </details>
       {% endif %}
     </div>
+
+    {% if d.spec and d.spec.corrections %}
+      <details class="text-xs text-paper/40">
+        <summary class="cursor-pointer hover:text-paper/70">
+          Rettelser du har gitt ({{ d.spec.corrections|length }})</summary>
+        <ul class="mt-2 space-y-1 list-disc list-inside">
+          {% for c in d.spec.corrections %}<li>{{ c }}</li>{% endfor %}
+        </ul>
+      </details>
+    {% endif %}
 
     <div class="grid grid-cols-2 gap-3">
       <button hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/pass?brand={{ brand }}"
@@ -81,16 +106,59 @@
       </button>
     </div>
 
+    {# Tredje vei ut av kortet: verken ja eller nei, men «dette er nesten riktig».
+       Et tall som ikke stemmer med kilden skal kunne rettes, ikke kastes. #}
+    <button type="button"
+            onclick="document.getElementById('rett-form').classList.toggle('hidden')"
+            class="w-full text-xs text-paper/40 hover:text-paper py-1">
+      Noe er galt, la meg si fra
+    </button>
+
+    <form id="rett-form" class="hidden border border-amber-900/60 rounded-xl p-4 space-y-3"
+          hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/rett?brand={{ brand }}"
+          hx-target="#bunke-kort" hx-swap="outerHTML">
+      <label class="block text-xs text-paper/50">
+        Hva er galt?
+        <textarea name="note" rows="3" required
+                  placeholder="F.eks: tallet er feil, kilden sier 10,6 mrd, ikke 15,7. Eller: for skråsikker, dette vet vi ikke."
+                  class="mt-1 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5
+                         text-sm text-paper placeholder:text-paper/25"></textarea>
+      </label>
+      <button class="w-full bg-amber-800/80 hover:bg-amber-700 rounded-lg py-2 text-sm font-medium">
+        <span class="htmx-indicator">⏳ </span>Skriv om tekst og bilde
+      </button>
+      <div class="text-xs text-paper/40">
+        Tar rundt 40 sekunder: både tekst og bilde lages på nytt. Rettelsen huskes
+        og følger med hvis du retter samme utkast igjen.
+      </div>
+    </form>
+
     {# Et ja uten dato er en intensjon, ikke en plan. Datoen er dessuten det som
        setter emnet i karantene, så den kan ikke utsettes. #}
     <form id="ja-form" class="hidden border border-emerald-900 rounded-xl p-4 space-y-3"
           hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/like?brand={{ brand }}"
           hx-target="#bunke-kort" hx-swap="outerHTML">
+      {# Faste publiseringsdager kl. 10, med opptatte merket. Et fritt datofelt lot
+         to innlegg havne på samme dag uten at det var synlig før etterpå. #}
       <label class="block text-xs text-paper/50">
         Når skal det ut?
-        <input type="datetime-local" name="when" value="{{ suggest_dt }}" step="900" required
-               class="mt-1 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5 text-sm text-paper">
+        <select name="when" required
+                class="mt-1 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5 text-sm text-paper">
+          {% for t in ledige %}
+            <option value="{{ t.verdi }}"
+                    {% if t.opptatt %}disabled{% endif %}
+                    {% if not t.opptatt and t.verdi == suggest_dt %}selected{% endif %}>
+              {{ t.tekst }} kl. {{ t.verdi[11:16] }}{% if t.opptatt %} — opptatt: {{ t.hva }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
       </label>
+      <details class="text-xs text-paper/40">
+        <summary class="cursor-pointer hover:text-paper/70">Annen dato eller tid</summary>
+        <input type="datetime-local" name="when_egen" step="900"
+               class="mt-2 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5 text-sm text-paper">
+        <div class="mt-1">Fyller du inn her, brukes denne i stedet.</div>
+      </details>
       <button class="w-full bg-emerald-800 hover:bg-emerald-700 rounded-lg py-2 text-sm font-medium">
         <span class="htmx-indicator">⏳ </span>Planlegg og lag bilde
       </button>

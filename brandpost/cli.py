@@ -510,11 +510,26 @@ prising eller interne tall. Ingen emoji/hashtags i selve kortet.
 - INGEN hashtags: modellen leser språket, hashtags er støy.
 - Karusellen er sterkeste format (2-3x dwell time): bruk den når stoffet bærer.
 
-═══ KILDEKRAV ═══
-Hver tallpåstand og hvert faktautsagn i utkastet skal ha en linje i `kilder`:
-«påstand → kilde» (URL fra nettsøk, eller «produktfakta»/«intern statistikk 72 627
-søknader» for egne tall). Kildene vises KUN for deg (e-post + dashbord), aldri i
-innlegget. Tomt bare når utkastet ikke påstår noe faktisk.
+═══ KILDEKRAV (les nøye, her har det gått galt før) ═══
+Hver tallpåstand og hvert faktautsagn skal ha en linje i `kilder`: «påstand → kilde».
+Kildene vises KUN for eieren (e-post + dashbord), aldri i innlegget.
+
+DU HAR IKKE NETTSØK I DENNE KJØRINGEN. Du kan derfor bare bruke tall fra:
+  (a) KONTEKSTEN du har fått, (b) PRODUKTFAKTA over, eller (c) egne tall som
+  «intern statistikk 72 627 søknader».
+
+Skriv ALDRI en URL du ikke har fått i konteksten. En URL du husker er en gjetning,
+og en gjetning som ser ut som en kilde er verre enn ingen kilde: den gjør at et
+feil tall ser etterprøvd ut.
+
+Husker du et tall, men ikke har det i konteksten: TA DET UT. Skriv poenget uten
+tallet, eller velg en annen vinkel. Et innlegg uten tall er alltid bedre enn et
+innlegg med feil tall.
+
+DETTE ER IKKE TEORETISK: 31. juli 2026 gikk et utkast ut med «rundt 15,7
+milliarder kroner» fra Horisont Europa. Riktig tall er 10,6. Kilde-linja påsto til
+og med «1,5 mrd euro / 15,7 mrd kr», et euro-tall som ikke stod noe sted, og som
+ikke engang stemte med kronetallet. Eieren fant det. Ikke gjenta det.
 
 ═══ DESIGNSTIL ═══
 {designstil}
@@ -605,6 +620,30 @@ def _avvist_block(avvist: list[dict]) -> str:
             + json.dumps(avvist, ensure_ascii=False))
 
 
+_TALL_RE = re.compile(r"\d[\d\s.,]*\s*(?:%|prosent|milliard\w*|mrd|millioner|mill\.)", re.I)
+
+
+def _flagg_udekkede_tall(posts: list[dict]) -> None:
+    """Sett `tall_uten_kilde` på utkast som påstår tall uten dekning i `kilder`.
+
+    Dette er en advarsel, ikke en sperre: å forkaste alt med tall ville tømt
+    bunken, og et tall kan være riktig selv om kilde-linja er formulert annerledes.
+    Men eieren skal se hvilke påstander som IKKE har noe bak seg før han
+    planlegger dem, for generering uten nettsøk kan ikke etterprøve noe selv.
+
+    Fanger ikke tilfellet der modellen dikter opp BÅDE tallet og kilde-linja, som
+    skjedde 31. juli 2026. Bare en ekte henting av URL-en ville avslørt det."""
+    for p in posts:
+        tekst = " ".join(str(p.get(k) or "") for k in ("headline", "body", "number", "subhead"))
+        tall = {t.strip() for t in _TALL_RE.findall(tekst)}
+        if not tall:
+            continue
+        kildetekst = " ".join(str(k) for k in (p.get("kilder") or []))
+        udekket = sorted(t for t in tall if t not in kildetekst)
+        if udekket:
+            p["tall_uten_kilde"] = udekket
+
+
 def _guard_topics(posts: list[dict], sperret: dict) -> list[dict]:
     """Forkast utkast som treffer den harde karantenen, og normaliser `emne`.
 
@@ -626,6 +665,21 @@ def _guard_topics(posts: list[dict], sperret: dict) -> list[dict]:
 
 
 def cmd_run(args) -> int:
+    """Generer utkast. I bunke-modus alltid med try/finally rundt låsen.
+
+    Låsen ble tidligere bare sluppet i suksess-veien, så en ModelError etterlot
+    den og blokkerte alt påfyll til 15-minutters foreldelsen slo inn. Det skjedde
+    første gang bunke-modus møtte ekte data: ti utkast med full kontekst sprengte
+    modell-timeouten."""
+    bunke_modus = getattr(args, "bunke", None)
+    try:
+        return _cmd_run(args)
+    finally:
+        if bunke_modus:
+            _slipp_bunkelaas(_vault(args))
+
+
+def _cmd_run(args) -> int:
     from . import model as loop_model
     vault = _vault(args)
     brand = brandkit.load_brand(args.brand)
@@ -686,19 +740,23 @@ def cmd_run(args) -> int:
               "«det handler ikke om X, det handler om Y»-figur. Avslutt heller "
               "med et konkret neste steg, en observasjon eller et ekte spørsmål."
             + f"\n\nLag {n} utkast nå: unikt motiv per bilde, og en pilar (pillar-id) per utkast.")
-    env = loop_model.structured_call(system, user, _POST_SCHEMA, label="generering")
+    # Tida skalerer med antall utkast: ti forslag med full kontekst sprengte
+    # standard-timeouten på 300 s første gang bunke-modus møtte ekte data, og
+    # begge modellene falt på tidsavbrudd. 60 s per utkast, aldri under standarden.
+    tid = max(300, 60 * n)
+    env = loop_model.structured_call(system, user, _POST_SCHEMA, label="generering",
+                                     timeout=tid)
     out = env.get("structured_output") or {}
     posts = out.get("posts") or []
     if not posts:
         print("  ⚠️  modellen ga ingen utkast", file=sys.stderr)
-        _slipp_bunkelaas(vault)
         return 1
     _normalize_pillars(posts, brand)
+    _flagg_udekkede_tall(posts)
     posts = _guard_topics(posts, sperret)
     if not posts:
         print("  ⚠️  alle utkast traff emne-karantenen, ingenting å rendre",
               file=sys.stderr)
-        _slipp_bunkelaas(vault)
         return 1
     valid_dates = {s["date"] for s in slots}
     for p in posts:  # ukjent/påfunnet slot_date -> i dag (render-fallback)
@@ -713,7 +771,6 @@ def cmd_run(args) -> int:
         # Ingen slot-merking (forslagene tilhører ingen dag ennå) og ingen e-post:
         # bunken ER flaten. En epost per påfyll ville gitt eieren ti varsler om
         # noe han allerede står og ser på.
-        _slipp_bunkelaas(vault)
         print(f"  🗂  {len(safe)} forslag lagt i bunken")
         return 0
     for ds in sorted({d.get("date") for d in safe} & valid_dates):

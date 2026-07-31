@@ -44,6 +44,7 @@ from brandpost import carousel as carouselmod  # noqa: E402
 from brandpost import plan as planmod  # noqa: E402
 from brandpost import publisher as pubmod  # noqa: E402
 from brandpost import render as rendermod  # noqa: E402
+from brandpost import revise as revisemod  # noqa: E402
 from brandpost import store  # noqa: E402
 from brandpost.context import _engagement_summary, _latest_pulse  # noqa: E402
 
@@ -149,6 +150,12 @@ def _manifest_drafts_by_day(v: Path, year: int, month: int,
             continue
         for pos, d in enumerate(manifest.get("drafts") or [], 1):
             if not isinstance(d, dict) or not _matcher_merke(d, merke):
+                continue
+            # Kalenderen viser KUN det som faktisk skal ut, altså planlagt eller
+            # publisert (Oscar 31. juli). Uvurderte forslag hører hjemme i bunken;
+            # lå de i kalenderen også, druknet de fire innleggene som er ekte
+            # avtaler i tjue som bare er forslag.
+            if d.get("status") not in ("planlagt", "published"):
                 continue
             vises = visningsdag(d, kildedag)
             if not vises.startswith(pre):
@@ -692,6 +699,7 @@ def _bunke_ctx(v: Path, brand: str | None) -> dict:
         ctx["d"] = d
         ctx["kilder"] = [k for k in (d.get("kilder") or []) if isinstance(k, str)]
         ctx["suggest_dt"] = f"{_neste_postdag(v)}T{_suggest_time()}"
+        ctx["ledige"] = _ledige_tider(v)
         # Media-URL utledes lokalt fra filNAVN: stiene i manifestet er absolutte
         # og maskinspesifikke, så et utkast generert på en annen maskin ville
         # pekt på en sti som ikke finnes her.
@@ -711,25 +719,56 @@ def _bunke_media(v: Path, d: dict) -> str:
     return f"/some/media/{day}/{Path(navn).name}?v={int(fil.stat().st_mtime)}"
 
 
-def _neste_postdag(v: Path) -> str:
-    """Første ledige publiseringsdag fram i tid, som forslag i datovelgeren.
+_NO_DAYS = ("mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag")
 
-    Uten et fornuftig forslag må eieren fylle inn dato manuelt på hvert eneste ja,
-    og da er bunken ikke raskere enn kalenderen."""
-    opptatt = set()
+
+def _opptatte_dager(v: Path) -> dict[str, str]:
+    """Dato → overskriften som alt ligger der (planlagt eller publisert)."""
+    ut: dict[str, str] = {}
     for mpath in store.socials_dir(v).glob("*/manifest.json"):
         try:
             manifest = json.loads(mpath.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         for d in manifest.get("drafts") or []:
-            if isinstance(d, dict) and d.get("scheduled_at"):
-                opptatt.add(str(d["scheduled_at"])[:10])
+            if not isinstance(d, dict):
+                continue
+            naar = d.get("published_at") or d.get("scheduled_at")
+            if naar:
+                ut[str(naar)[:10]] = (d.get("headline") or "")[:40]
+    return ut
+
+
+def _ledige_tider(v: Path, antall: int = 12) -> list[dict]:
+    """Kommende publiseringsdager som valg, med opptatte tydelig merket.
+
+    Et fritt datofelt lot eieren legge to innlegg på samme dag uten å merke det
+    før etterpå. Her ser han hele bildet mens han velger: hvilke dager som er
+    ledige, og hva som allerede ligger på de som ikke er det."""
+    opptatt = _opptatte_dager(v)
+    tid = _suggest_time()
+    ut: list[dict] = []
     dag = date.today() + timedelta(days=1)
-    for _ in range(60):
-        if dag.weekday() in planmod.POST_DAYS and dag.isoformat() not in opptatt:
-            return dag.isoformat()
+    for _ in range(90):
+        if len(ut) >= antall:
+            break
+        if dag.weekday() in planmod.POST_DAYS:
+            iso = dag.isoformat()
+            ut.append({
+                "verdi": f"{iso}T{tid}",
+                "tekst": f"{_NO_DAYS[dag.weekday()]} {dag.day}. {_NO_MONTHS[dag.month - 1]}",
+                "opptatt": iso in opptatt,
+                "hva": opptatt.get(iso, ""),
+            })
         dag += timedelta(days=1)
+    return ut
+
+
+def _neste_postdag(v: Path) -> str:
+    """Første ledige publiseringsdag fram i tid, som forvalg i velgeren."""
+    for t in _ledige_tider(v):
+        if not t["opptatt"]:
+            return t["verdi"][:10]
     return (date.today() + timedelta(days=1)).isoformat()
 
 
@@ -787,6 +826,70 @@ def _kanskje_etterfyll(igjen: int, brand: str) -> bool:
     return _etterfyll_bunke(brand)
 
 
+def _tavle_ctx(v: Path, brand: str | None) -> dict:
+    """Kanban over det som faktisk skal ut: publisert, denne uka, senere.
+
+    Kalenderen viser en måned av gangen og krever at du leser rutenettet.
+    Tavla svarer på det ene spørsmålet «hva ligger til publisering, og når»
+    uten at du må lete."""
+    merke = merke_valg(brand)
+    idag = date.today()
+    uke_slutt = idag + timedelta(days=(6 - idag.weekday()))
+    kolonner: dict[str, list[dict]] = {"ute": [], "denne_uka": [], "senere": []}
+
+    for mpath in sorted(store.socials_dir(v).glob("*/manifest.json")):
+        kildedag = mpath.parent.name
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for pos, d in enumerate(manifest.get("drafts") or [], 1):
+            if not isinstance(d, dict) or not _matcher_merke(d, merke):
+                continue
+            if d.get("status") not in ("planlagt", "published"):
+                continue
+            naar = str(d.get("published_at") or d.get("scheduled_at") or "")
+            if not naar:
+                continue
+            dagen = naar[:10]
+            rad = {
+                "dato": dagen, "tid": naar[11:16],
+                "headline": d.get("headline") or d.get("tittel", ""),
+                "status": d.get("status"), "brand": d.get("brand", ""),
+                "emne": d.get("emne", ""),
+                "thumb": _thumb_url(kildedag, d),
+                "nr": d.get("nr") if isinstance(d.get("nr"), int) else pos,
+                "kildedag": kildedag,
+                "url": d.get("linkedin_url", ""),
+            }
+            try:
+                dd = datetime.strptime(dagen, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            rad["ukedag"] = _NO_DAYS[dd.weekday()]
+            rad["vises"] = f"{dd.day}. {_NO_MONTHS[dd.month - 1]}"
+            if d.get("status") == "published" or dd < idag:
+                kolonner["ute"].append(rad)
+            elif dd <= uke_slutt:
+                kolonner["denne_uka"].append(rad)
+            else:
+                kolonner["senere"].append(rad)
+
+    kolonner["ute"].sort(key=lambda r: r["dato"], reverse=True)   # nyeste først
+    kolonner["denne_uka"].sort(key=lambda r: (r["dato"], r["tid"]))
+    kolonner["senere"].sort(key=lambda r: (r["dato"], r["tid"]))
+    kolonner["ute"] = kolonner["ute"][:12]        # historikken er ikke poenget
+    return {"kolonner": kolonner, "brand": merke,
+            "tomme_dager": [t for t in _ledige_tider(v) if not t["opptatt"]][:6]}
+
+
+@router.get("/tavle", response_class=HTMLResponse)
+def tavle(request: Request, brand: str | None = None):
+    ctx = _tavle_ctx(vault_path(), brand)
+    ctx["merker"] = merker_ctx(ctx["brand"])
+    return templates.TemplateResponse(request, "some/tavle.html", ctx)
+
+
 @router.get("/bunke", response_class=HTMLResponse)
 def bunke(request: Request, brand: str | None = None):
     ctx = _bunke_ctx(vault_path(), brand)
@@ -817,13 +920,62 @@ def api_bunke_pass(request: Request, day: str, nr: int, brand: str | None = None
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 
-@router.post("/api/bunke/{day}/{nr}/like", response_class=HTMLResponse)
-def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(...),
+@router.post("/api/bunke/{day}/{nr}/rett", response_class=HTMLResponse)
+def api_bunke_rett(request: Request, day: str, nr: int, note: str = Form(...),
                    brand: str | None = None):
-    """Ja: krever dato. Planlegger, rendrer bildet, og går videre til neste kort."""
+    """Si hva som er galt, og få både tekst og bilde på nytt.
+
+    Dashbordets vanlige regen lager nytt bilde fra samme tekst. Denne finnes for
+    når det er INNHOLDET som er feil: et tall som ikke stemmer med kilden, en
+    påstand som er for sterk, en vinkel som bommer. Både tekst og bilde lages på
+    nytt, for et nytt poeng fortjener sjelden det gamle motivet.
+
+    Tar tid (ett modellkall pluss ett bildekall, rundt 30-40 sekunder) og kjøres
+    derfor synkront med spinner: eieren står og venter på nettopp dette svaret,
+    i motsetning til påfyllet som skal skje i bakgrunnen."""
     v = vault_path()
     mpath, manifest, idx, draft = _resolve(v, day, nr)
-    when = (when or "").strip()[:16]
+    if not (note or "").strip():
+        return _err("Skriv hva som er galt, så retter den det.")
+
+    try:
+        res = revisemod.revise_draft(draft, note, brand_key=draft.get("brand", ""))
+    except Exception as e:  # noqa: BLE001
+        return _err(f"Rettingen feilet: {e}")
+
+    oppdatert = store.update_draft_fields(mpath, manifest, idx, res["felter"])
+
+    # Nytt bilde: teksten er endret, og et nytt poeng fortjener sjelden det gamle
+    # motivet. Feiler bildekallet, står teksten likevel rettet.
+    bilde_note = ""
+    if oppdatert.get("type") != "karusell":
+        try:
+            merke = brandkit.load_brand(oppdatert.get("brand") or "demo")
+            result = rendermod.render_post(dict(oppdatert.get("spec") or {}), brand=merke)
+            store.attach_image(mpath, manifest, idx, result["png"])
+        except Exception as e:  # noqa: BLE001
+            bilde_note = f" Teksten er rettet, men bildet feilet: {e}"
+
+    _, _, _, ferdig = _resolve(v, day, nr)
+    ctx = _bunke_ctx(v, brand)
+    ctx["d"] = ferdig
+    ctx["d"]["day"] = day
+    ctx["kilder"] = [k for k in (ferdig.get("kilder") or []) if isinstance(k, str)]
+    ctx["media"] = _bunke_media(v, {**ferdig, "day": day})
+    ctx["flash"] = (res["endret"] or "Rettet.") + bilde_note
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
+
+
+@router.post("/api/bunke/{day}/{nr}/like", response_class=HTMLResponse)
+def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
+                   when_egen: str = Form(""), brand: str | None = None):
+    """Ja: krever dato. Planlegger, rendrer bildet, og går videre til neste kort.
+
+    `when` er valget fra nedtrekket med ledige publiseringsdager; `when_egen` er
+    det frie feltet bak «annen dato eller tid» og vinner når det er fylt ut."""
+    v = vault_path()
+    mpath, manifest, idx, draft = _resolve(v, day, nr)
+    when = ((when_egen or "").strip() or (when or "").strip())[:16]
     try:
         datetime.strptime(when, "%Y-%m-%dT%H:%M")
     except ValueError:

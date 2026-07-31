@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Tavla · SoMe{% endblock %}
+{% block body %}
+<div class="h-screen overflow-y-auto">
+  <div class="max-w-screen-xl mx-auto p-6">
+
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h1 class="text-2xl font-bold">Tavla</h1>
+        <div class="text-xs text-paper/50">Kun det som faktisk skal ut. Forslag ligger i bunken.</div>
+      </div>
+      <label class="flex items-center gap-2 text-xs text-paper/50">
+        Selskap
+        <select onchange="location.href='/some/tavle?brand=' + this.value"
+                class="bg-ink-800 border border-ink-700 rounded px-2 py-1 text-sm text-paper">
+          {% for m in merker.valg %}
+            <option value="{{ m.key }}" {% if m.key == merker.valgt %}selected{% endif %}>
+              {{ m.navn }}{% if m.dvale %} (dvale){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="flex gap-1 mb-6 border-b border-ink-700">
+      <a href="/some?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper/50 hover:text-paper border-b-2 border-transparent">Kalender</a>
+      <a href="/some/tavle?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper font-medium border-b-2 border-paper">Tavla</a>
+      <a href="/some/bunke?brand={{ merker.valgt }}"
+         class="px-4 py-2 text-sm text-paper/50 hover:text-paper border-b-2 border-transparent">Bunken</a>
+    </div>
+
+    {% macro kort(r) %}
+      <div class="border border-ink-700 rounded-xl p-3 bg-ink-900
+                  {% if r.status == 'published' %}opacity-60{% endif %}">
+        <div class="flex items-start gap-3">
+          {% if r.thumb %}
+            <img src="{{ r.thumb }}" alt="" loading="lazy"
+                 class="w-12 h-12 rounded object-cover border border-ink-700 shrink-0">
+          {% endif %}
+          <div class="min-w-0">
+            <div class="text-xs {% if r.status == 'published' %}text-emerald-400{% else %}text-sky-400{% endif %}">
+              {{ r.ukedag }} {{ r.vises }} · {{ r.tid }}
+              {% if r.status == 'published' %}· ute{% endif %}
+            </div>
+            <div class="text-sm font-medium leading-snug mt-0.5">{{ r.headline }}</div>
+            {% if r.emne %}<div class="text-xs text-paper/30 mt-1">{{ r.emne }}</div>{% endif %}
+            {% if r.url %}
+              <a href="{{ r.url }}" target="_blank" rel="noopener"
+                 class="text-xs text-paper/40 hover:text-paper underline">se innlegget</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endmacro %}
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-paper/40 mb-2">
+          Denne uka <span class="text-paper/25">({{ kolonner.denne_uka|length }})</span>
+        </div>
+        <div class="space-y-3">
+          {% for r in kolonner.denne_uka %}{{ kort(r) }}{% else %}
+            <div class="text-xs text-paper/30 border border-dashed border-ink-700 rounded-xl p-4">
+              Ingenting planlagt denne uka.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-xs uppercase tracking-wide text-paper/40 mb-2">
+          Senere <span class="text-paper/25">({{ kolonner.senere|length }})</span>
+        </div>
+        <div class="space-y-3">
+          {% for r in kolonner.senere %}{{ kort(r) }}{% else %}
+            <div class="text-xs text-paper/30 border border-dashed border-ink-700 rounded-xl p-4">
+              Ingenting lenger fram.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-xs uppercase tracking-wide text-paper/40 mb-2">
+          Ute <span class="text-paper/25">({{ kolonner.ute|length }})</span>
+        </div>
+        <div class="space-y-3">
+          {% for r in kolonner.ute %}{{ kort(r) }}{% else %}
+            <div class="text-xs text-paper/30 border border-dashed border-ink-700 rounded-xl p-4">
+              Ingenting publisert ennå.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% if tomme_dager %}
+      <div class="mt-8 border border-ink-700 rounded-xl p-4">
+        <div class="text-xs uppercase tracking-wide text-paper/40 mb-2">Ledige dager</div>
+        <div class="flex flex-wrap gap-2">
+          {% for t in tomme_dager %}
+            <span class="text-xs border border-dashed border-ink-700 rounded-lg px-2 py-1 text-paper/50">
+              {{ t.tekst }}</span>
+          {% endfor %}
+        </div>
+        <a href="/some/bunke?brand={{ merker.valgt }}"
+           class="inline-block mt-3 text-xs text-paper/60 hover:text-paper underline">
+          Fyll dem fra bunken</a>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

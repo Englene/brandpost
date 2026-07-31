@@ -666,7 +666,14 @@ def deletable_drafts(vault: Path | None = None) -> list[dict]:
     return ut
 
 
-_EDITABLE_FIELDS = ("headline", "body", "why_now", "tittel")
+# Strengfelt dashbordets rediger-form og rettingen kan skrive.
+# `emne` og `motif` kom til med bunken: en retting som ikke kan endre emnet ville
+# ikke kunne flytte utkastet ut av feil karantene, og en som ikke kan endre
+# motivet ville tvinge et nytt poeng inn i det gamle bildet.
+_EDITABLE_FIELDS = ("headline", "body", "why_now", "tittel", "emne", "motif")
+# Felt som ikke er strenger og settes i sin helhet. `kilder` er ofte selve
+# feilen som rettes, og `spec` bærer rettelseshistorikken bildet regenereres fra.
+_EDITABLE_STRUCTS = {"kilder": list, "spec": dict}
 
 
 def update_draft_fields(manifest_path: Path, manifest: dict, idx: int,
@@ -682,7 +689,11 @@ def update_draft_fields(manifest_path: Path, manifest: dict, idx: int,
     for k in _EDITABLE_FIELDS:
         v = fields.get(k)
         if isinstance(v, str):
-            d[k] = v.strip()
+            d[k] = clean_topic(v) if k == "emne" else v.strip()
+    for k, typ in _EDITABLE_STRUCTS.items():
+        v = fields.get(k)
+        if isinstance(v, typ):
+            d[k] = v
     atomic_write_json(Path(manifest_path), manifest)
     _sync_draft_md(d)
     return d
