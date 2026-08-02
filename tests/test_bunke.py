@@ -671,7 +671,7 @@ def test_timeouten_skalerer_med_bunkestoerrelsen(monkeypatch, tmp_path):
         bunke = 10
         vault = str(tmp_path)
     cli.cmd_run(A())
-    assert sett["timeout"] >= 600, "ti utkast må få mer enn standardtimeouten"
+    assert sett["timeout"] >= 1200, "ti utkast må få rikelig over standardtimeouten"
 
 
 # ── Tidsvelger og tavle ──────────────────────────────────────────────────────

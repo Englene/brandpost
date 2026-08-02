@@ -805,7 +805,10 @@ def _neste_postdag(v: Path) -> str:
 # samtidig. Da fylles det raskere enn det tømmes, og han kan planlegge langt fram
 # i én økt uten å vente.
 BUNKE_MIN = int(os.environ.get("BRANDPOST_BUNKE_MIN", "15"))
-BUNKE_PAAFYLL = int(os.environ.get("BRANDPOST_BUNKE_PAAFYLL", "10"))
+# FEM og ikke ti per runde: ti utkast med full kontekst sprengte modell-timeouten
+# to ganger (opus-5 brukte over 600 s og falt til sonnet, som også falt). Mindre
+# batcher kommer raskere fram, feiler sjeldnere, og to samtidige gir uansett ti.
+BUNKE_PAAFYLL = int(os.environ.get("BRANDPOST_BUNKE_PAAFYLL", "5"))
 BUNKE_SAMTIDIGE = int(os.environ.get("BRANDPOST_BUNKE_SAMTIDIGE", "2"))
 # En lås eldre enn dette er en krasjet kjøring, ikke en pågående.
 BUNKE_LAAS_MAKS_S = 20 * 60

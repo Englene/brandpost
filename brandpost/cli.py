@@ -742,10 +742,11 @@ def _cmd_run(args) -> int:
               "«det handler ikke om X, det handler om Y»-figur. Avslutt heller "
               "med et konkret neste steg, en observasjon eller et ekte spørsmål."
             + f"\n\nLag {n} utkast nå: unikt motiv per bilde, og en pilar (pillar-id) per utkast.")
-    # Tida skalerer med antall utkast: ti forslag med full kontekst sprengte
-    # standard-timeouten på 300 s første gang bunke-modus møtte ekte data, og
-    # begge modellene falt på tidsavbrudd. 60 s per utkast, aldri under standarden.
-    tid = max(300, 60 * n)
+    # Tida skalerer med antall utkast, og taket er satt etter to observerte
+    # tidsavbrudd: først på 300 s, så på 600 s med ti utkast (opus-5 falt, og
+    # sonnet-5 etter den). Hvert utkast krever en full runde med kontekst,
+    # kildekrav og karantene, så 120 s per stykk er ikke rundhåndet.
+    tid = max(300, 120 * n)
     env = loop_model.structured_call(system, user, _POST_SCHEMA, label="generering",
                                      timeout=tid)
     out = env.get("structured_output") or {}
