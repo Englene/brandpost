@@ -231,14 +231,23 @@ def _write_dry_metadata(draft: dict, payload: dict, *, when: datetime | None = N
     return out
 
 
-def api_commentary(body: str, *, brand_name: str, org_urn: str) -> str:
-    """«@Demo Labs» i innleggsteksten → ekte @-mention av firmasida i Posts-API-ets
-    little-text-format: `@[Navn](urn:li:organization:…)`. Manuell posting beholder
-    klarteksten (du skriver taggen selv i composeren); API-veien får den ekte."""
-    tag = f"@{brand_name}"
-    if not body or not org_urn or tag not in body:
+def api_commentary(body: str, *, brand_name: str, org_urn: str,
+                   handle: str = "") -> str:
+    """Taggen i innleggsteksten → ekte @-mention i Posts-API-ets little-text-format:
+    `@[Navn](urn:li:organization:…)`. Manuell posting beholder klarteksten (du
+    skriver taggen selv i composeren); API-veien får den ekte.
+
+    Leter etter HANDLEN først, og faller tilbake på merkenavnet. Sanitizeren
+    skriver `@handle` («@demo-labs»), mens denne bare lette etter `@merkenavn`
+    («@Demo Labs»). De to har ikke møttes siden handle-støtten kom inn, så taggen
+    har gått ut som ren tekst i stedet for en klikkbar mention. Visningsnavnet i
+    mentionen er fortsatt merkenavnet: det er det LinkedIn viser leseren."""
+    if not body or not org_urn:
         return body
-    return body.replace(tag, f"@[{brand_name}]({org_urn})")
+    for tag in (f"@{handle}" if handle else "", f"@{brand_name}"):
+        if tag and tag != "@" and tag in body:
+            return body.replace(tag, f"@[{brand_name}]({org_urn})")
+    return body
 
 
 def _with_brand_org(cfg: LinkedInConfig, brand_key: str | None) -> LinkedInConfig:
@@ -261,9 +270,17 @@ def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
     Dry-run når `dry_run=True` ELLER `LINKEDIN_ENABLED` er av: ingen API-kall, skriver metadata."""
     cfg = _with_brand_org(cfg or load_linkedin_config(), draft.get("brand"))
     dry = (not cfg.enabled) if dry_run is None else bool(dry_run)
+    # Handlen hentes fra merket, ikke fra utkastet: manifestet bærer ikke handlen,
+    # og uten den finner api_commentary aldri taggen sanitizeren skrev.
+    _handle = ""
+    try:
+        from . import brandkit
+        _handle = brandkit.load_brand(draft.get("brand") or "").linkedin_handle
+    except Exception:  # noqa: BLE001
+        pass
     body = api_commentary((draft.get("body") or "").strip(),
                           brand_name=(draft.get("brand_name") or "Demo Labs").strip(),
-                          org_urn=cfg.org_urn)
+                          org_urn=cfg.org_urn, handle=_handle)
     headline = (draft.get("headline") or "").strip()
 
     if (draft.get("type") or draft.get("format")) == "karusell":

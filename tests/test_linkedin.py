@@ -159,3 +159,52 @@ def test_api_versjon_er_aktiv():
     import os
     from brandpost import linkedin
     assert linkedin.LINKEDIN_VERSION >= "202601", "API-versjonen er for gammel"
+
+
+# ── Taggen må bli en ekte mention (regresjon oppdaget 2. august 2026) ─────────
+
+def test_mention_finner_taggen_sanitizeren_faktisk_skrev():
+    """_sanitize_spec skriver «@handle», men api_commentary lette bare etter
+    «@merkenavn». De to har ikke møttes siden handle-støtten kom inn, så taggen
+    gikk ut som ren tekst i stedet for en klikkbar mention."""
+    from brandpost import linkedin
+    ut = linkedin.api_commentary("Vi i @demo-labs ser dette.", brand_name="Demo Labs",
+                                 org_urn="urn:li:organization:42", handle="demo-labs")
+    assert ut == "Vi i @[Demo Labs](urn:li:organization:42) ser dette."
+
+
+def test_mention_bruker_merkets_egen_side():
+    """To merker, to firmasider. Taggen må peke på utkastets eget selskap."""
+    from brandpost import linkedin
+    a = linkedin.api_commentary("@merke-a er her", brand_name="Merke A",
+                                org_urn="urn:li:organization:111", handle="merke-a")
+    b = linkedin.api_commentary("@merke-b er her", brand_name="Merke B",
+                                org_urn="urn:li:organization:222", handle="merke-b")
+    assert "111" in a and "222" not in a
+    assert "222" in b and "111" not in b
+
+
+def test_mention_faller_tilbake_paa_merkenavnet():
+    """Eldre utkast og manuelt skrevet tekst kan ha den gamle @merkenavn-formen."""
+    from brandpost import linkedin
+    ut = linkedin.api_commentary("Vi i @Demo Labs ser det.", brand_name="Demo Labs",
+                                 org_urn="urn:li:organization:42")
+    assert ut == "Vi i @[Demo Labs](urn:li:organization:42) ser det."
+
+
+def test_mention_roerer_ikke_tekst_uten_tagg():
+    from brandpost import linkedin
+    tekst = "Ingen tagg her i det hele tatt."
+    assert linkedin.api_commentary(tekst, brand_name="Demo Labs",
+                                   org_urn="urn:li:organization:42",
+                                   handle="demo-labs") == tekst
+
+
+def test_tom_handle_lager_ikke_falsk_treff():
+    """Er handlen tom, må «@» alene aldri regnes som en tagg: da ville hver eneste
+    e-postadresse og krøllalfa i teksten blitt til en mention."""
+    from brandpost import linkedin
+    tekst = "Send til post@eksempel.no, ikke @ noen andre."
+    ut = linkedin.api_commentary(tekst, brand_name="Ukjent Merke",
+                                 org_urn="urn:li:organization:42", handle="")
+    assert ut == tekst
