@@ -134,8 +134,15 @@ def render_innhold(slide: dict, brand: Brand, *, pos: int, total: int,
                    text_rgb=_hex(pal.headline))
 
     draw = ImageDraw.Draw(img)
-    # Stort nummer (punktets nummer i rekka, forside teller ikke)
-    num = str(slide.get("number") or number or (pos + 1))
+    # Stort nummer (punktets nummer i rekka, forside teller ikke).
+    #
+    # Det BEREGNEDE nummeret vinner over modellens eget felt. Motoren teller
+    # innholds-slides deterministisk i carousel.build_carousel; modellen teller
+    # slide-posisjoner og bommer systematisk med forsiden: i «Fem formuleringer
+    # som svekker en søknad» fikk første formulering tallet 2, siden den lå på
+    # slide to. `pos + 1` er siste utvei og har samme feil, så den brukes bare
+    # når ingen har talt for oss.
+    num = str(number or slide.get("number") or (pos + 1))
     nf = _load_font(brand.display_font, int(w * 0.16), bold=True)
     draw.text((margin, int(h * 0.16)), num, font=nf, fill=_hex(pal.shape))
 

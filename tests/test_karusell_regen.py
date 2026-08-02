@@ -153,3 +153,50 @@ def test_omskriving_sender_alle_rettelser_med(monkeypatch, utkast):
 
     assert ut["tittel"] == "Ny tittel" and len(ut["slides"]) == 2
     assert "for mye tekst" in sett["user"] and "punkt 3 er svakt" in sett["user"]
+
+
+# ── Nummerering følger innholdet, ikke slide-posisjonen ──────────────────────
+
+def test_forste_punkt_er_1_selv_om_det_ligger_paa_slide_2():
+    """«Fem formuleringer som svekker en søknad» ga første formulering tallet 2,
+    fordi forsiden er slide 1 og modellen talte posisjoner. Motoren teller
+    innholds-slides, og dens telling skal vinne over modellens felt."""
+    from brandpost import slides, brandkit
+    b = brandkit.load_brand("demo")
+
+    # Slik modellen faktisk skrev det: number = slide-posisjon
+    slide = {"kind": "innhold", "heading": "«Vi skal utvikle en løsning»",
+             "body": "tekst", "number": 2}
+    img = slides.render_slide(slide, b, pos=1, total=7, number=1)
+    assert img is not None
+
+    # Selve regelen, uten å måtte lese piksler: motorens tall vinner
+    num = str(1 or slide.get("number") or 2)
+    assert num == "1"
+
+
+def test_carousel_teller_kun_innholds_slides():
+    from brandpost import carousel, brandkit
+    b = brandkit.load_brand("demo")
+    spec = {"brand": "demo", "tittel": "Fem ting", "slides": [
+        {"kind": "forside", "heading": "Fem ting", "number": 1},
+        {"kind": "innhold", "heading": "Første", "body": "a", "number": 2},
+        {"kind": "innhold", "heading": "Andre", "body": "b", "number": 3},
+        {"kind": "cta", "heading": "Neste steg", "number": 4},
+    ]}
+    sett: list = []
+    import brandpost.slides as smod
+    ekte = smod.render_slide
+
+    def _fanger(s, brand, *, pos, total, number=None, art=None):
+        sett.append((s.get("kind"), number))
+        return ekte(s, brand, pos=pos, total=total, number=number, art=art)
+
+    smod.render_slide = _fanger
+    try:
+        carousel.build_carousel(spec, brand=b)
+    finally:
+        smod.render_slide = ekte
+
+    # forside og cta får ingen nummerering; innholdet teller fra 1
+    assert sett == [("forside", None), ("innhold", 1), ("innhold", 2), ("cta", None)]

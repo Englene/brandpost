@@ -484,6 +484,10 @@ FORMATER:
 - `tilda` (bool): SJELDEN (ca. 1 av 5-6), da bare som et lite, sekundært element, aldri fokus.
 - KARUSELL: type "karusell" (0-1 per kjøring, når stoffet bærer flere punkter): `tittel`,
   `body`, `slides` (forside + 5-8 innhold + cta).
+  IKKE nummerer slidene selv: la `number` stå tomt og skriv ingen tall i `kicker`.
+  Motoren teller innholds-slidene og hopper over forside og cta. Lover tittelen
+  «fem formuleringer», skal første formulering vise 1, ikke 2 fordi den ligger på
+  slide to.
 
 Alle: `body` (LinkedIn-teksten), `why_now` (én setning), `pillar` (id fra pilarene under),
 `kilder` (se KILDEKRAV). orientation default 'staaende'. Se «SISTE MOTIVER» og ikke gjenta
