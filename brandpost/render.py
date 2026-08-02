@@ -44,6 +44,29 @@ def _pcol(pal, attr: str) -> tuple[int, int, int]:
     return _hex(getattr(pal, attr))
 
 
+def _er_mork(rgb: tuple[int, int, int]) -> bool:
+    """Er fargen mørk nok til at mørk grafikk forsvinner i den?
+
+    Relativ luminans (ITU-R BT.601), som vekter grønt tyngst fordi øyet gjør det.
+    Terskelen ligger midt på skalaen; den skal skille «kremhvit» fra «marineblå»,
+    ikke finkalibrere gråtoner."""
+    r, g, b = rgb[:3]
+    return (0.299 * r + 0.587 * g + 0.114 * b) < 128
+
+
+def _logo_tint(pal, theme, text_rgb):
+    """Farge logo-marken skal tintes til, eller None for originalfargene.
+
+    Marken er merkets egen, og på lys bakgrunn skal den stå som den er. På MØRK
+    bakgrunn må den tintes, ellers forsvinner den: Vitandis palett har samme verdi
+    på `headline` og `dark`, så marken ble marineblå på marineblå og var borte
+    fra kortet. Tidligere ble dette avgjort av hvilket palett-navn bakgrunnen
+    hadde (`theme.bg == "headline"`), som traff ett merke og bommet på neste."""
+    if _er_mork(_pcol(pal, theme.bg)):
+        return text_rgb
+    return None
+
+
 def _cap_text(s: str | None, max_chars: int) -> str:
     """Backstop mot for lang subtekst på typografi-kort: kutt til ~max_chars på
     ordgrense. Utdypningen skal uansett ligge i LinkedIn-teksten (body), ikke på kortet."""
@@ -307,12 +330,14 @@ def _apply_theme(img, brand, theme: Theme) -> None:
     mark_h = int(w * 0.05)
     if theme.wordmark == "tl":
         wm_text = _pcol(pal, theme.fg)
-        wm_tint = _pcol(pal, "bg") if theme.bg == "headline" else None
+        wm_tint = _logo_tint(pal, theme, wm_text)
         _draw_wordmark(img, brand, margin, int(h * 0.058), mark_h, text_rgb=wm_text, tint=wm_tint)
     elif theme.wordmark == "bottom":
         in_band = theme.band is not None
         wm_text = _pcol(pal, "bg") if in_band else _pcol(pal, theme.fg)
-        wm_tint = _pcol(pal, "bg") if in_band else None
+        # I båndet står ordmerket på merkefargen, ellers på temaets bakgrunn.
+        wm_tint = (_pcol(pal, "bg") if in_band
+                   else _logo_tint(pal, theme, wm_text))
         total = _wordmark_width(brand, mark_h)
         wx = (w - total) // 2
         wy = h - int(h * 0.145) if in_band else h - int(h * 0.11)

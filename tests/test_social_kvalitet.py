@@ -356,3 +356,47 @@ def test_brands_readme_viser_en_kommando_som_finnes():
     assert "brandpost.social" not in tekst
     if "import brandkit" in tekst:
         assert "from brandpost import brandkit" in tekst
+
+
+# ── Logoen må være synlig på mørke kort (Oscar 2. august 2026) ───────────────
+
+
+def test_er_mork_skiller_kremhvit_fra_marineblaa():
+    from brandpost import render
+    assert render._er_mork((0x1C, 0x2E, 0x3D)) is True     # marineblå
+    assert render._er_mork((0xF7, 0xF3, 0xEA)) is False    # kremhvit
+    assert render._er_mork((0x2B, 0x2B, 0x2B)) is True     # mørkt panel
+
+
+def test_logoen_tintes_naar_bakgrunnen_er_moerk():
+    """Regelen, uavhengig av merke: mørk bakgrunn krever tintet mark, ellers kan
+    en mark i samme mørke tone som bakgrunnen forsvinne helt. Det skjedde med et
+    merke der paletten hadde samme verdi på `headline` og `dark`."""
+    from brandpost import brandkit, render
+    b = brandkit.load_brand("demo")
+    tekstfarge = (255, 255, 255)
+
+    mork = render.THEME_MAP["mork"]
+    assert render._logo_tint(b.palette, mork, tekstfarge) == tekstfarge
+
+    lys = render.THEME_MAP["sand-hoyre"]
+    assert render._logo_tint(b.palette, lys, tekstfarge) is None
+
+
+def test_moerkt_kort_har_synlig_mark():
+    """Pikselbevis: noe i logo-hjørnet må skille seg fra bakgrunnen."""
+    from io import BytesIO
+    from PIL import Image
+    from brandpost import brandkit, render
+    b = brandkit.load_brand("demo")
+    bg = render._pcol(b.palette, render.THEME_MAP["mork"].bg)
+
+    # seq 2 velger «mork»-temaet (verifisert mot pick_theme)
+    assert render.pick_theme({"headline": "Test"}, 2).key == "mork"
+    png = render.render_template({"headline": "Test"}, b, seq=2)
+    img = Image.open(BytesIO(png)).convert("RGB")
+    w, h = img.size
+    x0, y0 = int(w * 0.078), int(h * 0.058)
+    utsnitt = img.crop((x0, y0, x0 + int(w * 0.06), y0 + int(w * 0.06)))
+    avstand = max(sum(abs(a - c) for a, c in zip(p, bg)) for p in utsnitt.getdata())
+    assert avstand > 60, "ingenting i logo-hjørnet skiller seg fra bakgrunnen"
