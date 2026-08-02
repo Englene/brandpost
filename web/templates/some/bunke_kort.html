@@ -141,13 +141,49 @@
       </button>
     </div>
 
-    {# Tredje vei ut av kortet: verken ja eller nei, men «dette er nesten riktig».
-       Et tall som ikke stemmer med kilden skal kunne rettes, ikke kastes. #}
-    <button type="button"
-            onclick="document.getElementById('rett-form').classList.toggle('hidden')"
-            class="w-full text-xs text-paper/40 hover:text-paper py-1">
-      Noe er galt, la meg si fra
-    </button>
+    {# To veier når kortet er «nesten riktig»: rett det selv, eller be modellen.
+       De fleste innvendinger er små nok til at egen retting er raskere, og den
+       endrer nøyaktig det du peker på. #}
+    <div class="grid grid-cols-3 gap-2 text-xs">
+      <button type="button"
+              onclick="document.getElementById('rediger-form').classList.toggle('hidden')"
+              class="text-paper/50 hover:text-paper border border-ink-700 rounded-lg py-1.5">
+        Rediger teksten
+      </button>
+      <button hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/nytt-bilde?brand={{ brand }}"
+              hx-target="#bunke-kort" hx-swap="outerHTML"
+              class="text-paper/50 hover:text-paper border border-ink-700 rounded-lg py-1.5">
+        <span class="htmx-indicator">⏳ </span>Nytt bilde
+      </button>
+      <button type="button"
+              onclick="document.getElementById('rett-form').classList.toggle('hidden')"
+              class="text-paper/50 hover:text-paper border border-ink-700 rounded-lg py-1.5">
+        Be om omskriving
+      </button>
+    </div>
+
+    <form id="rediger-form" class="hidden border border-ink-700 rounded-xl p-4 space-y-3"
+          hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/rediger?brand={{ brand }}"
+          hx-target="#bunke-kort" hx-swap="outerHTML">
+      <label class="block text-xs text-paper/50">
+        Overskrift
+        <input name="headline" value="{{ d.headline }}"
+               class="mt-1 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5
+                      text-sm text-paper">
+      </label>
+      <label class="block text-xs text-paper/50">
+        Tekst
+        <textarea name="body" rows="14"
+                  class="mt-1 w-full bg-ink-800 border border-ink-700 rounded px-2 py-1.5
+                         text-sm text-paper font-mono leading-relaxed">{{ d.body }}</textarea>
+      </label>
+      <button class="w-full bg-ink-700 hover:bg-ink-600 rounded-lg py-2 text-sm font-medium">
+        Lagre
+      </button>
+      <div class="text-xs text-paper/40">
+        Bildet røres ikke. Trenger du nytt motiv, bruk knappen ved siden av.
+      </div>
+    </form>
 
     <form id="rett-form" class="hidden border border-amber-900/60 rounded-xl p-4 space-y-3"
           hx-post="/some/api/bunke/{{ d.day }}/{{ d.nr }}/rett?brand={{ brand }}"

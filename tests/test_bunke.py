@@ -948,3 +948,56 @@ def test_andre_merker_roeres_aldri(tmp_path):
                          when=naa)                      # erstatter KUN sine egne
     _, m = store.load_manifest(tmp_path, "2026-08-02")
     assert "Vitandis" in [d["headline"] for d in m["drafts"]]
+
+
+# ── Rediger teksten selv ─────────────────────────────────────────────────────
+
+def test_egen_redigering_lagrer_uten_modellkall(bunke_client):
+    """De fleste innvendinger er små: en setning for mye, et ord som skurrer. Å be
+    modellen skrive om alt for det er tregt, og den endrer gjerne mer enn du ba om."""
+    client, _, mpath = bunke_client
+    r = client.post("/some/api/bunke/2026-07-31/1/rediger",
+                    data={"headline": "Ny overskrift", "body": "Kortere tekst."})
+    assert r.status_code == 200
+    assert "Lagret" in r.text
+
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["headline"] == "Ny overskrift"
+    assert d["body"] == "Kortere tekst."
+    # spec-en er kilden når bildet senere regenereres, så den må følge teksten
+    assert d["spec"]["body"] == "Kortere tekst."
+
+
+def test_redigering_beholder_utkastet_i_bunken(bunke_client):
+    client, _, mpath = bunke_client
+    client.post("/some/api/bunke/2026-07-31/1/rediger", data={"body": "Endret."})
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["status"] == "proposed" and "verdict" not in d
+
+
+def test_tom_tekst_avvises(bunke_client):
+    client, _, mpath = bunke_client
+    r = client.post("/some/api/bunke/2026-07-31/1/rediger", data={"body": "   "})
+    assert "kan ikke være tom" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["body"] == "brødtekst"          # urørt
+
+
+def test_redigering_saneres_som_all_annen_tekst(bunke_client):
+    """Tankestrek skal aldri overleve, heller ikke når eieren skriver den selv."""
+    client, _, mpath = bunke_client
+    client.post("/some/api/bunke/2026-07-31/1/rediger",
+                data={"body": "Dette er et poeng — og her er neste."})
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert "—" not in d["body"]
+
+
+def test_nytt_bilde_beholder_teksten(bunke_client, monkeypatch):
+    client, _, mpath = bunke_client
+    monkeypatch.setattr("brandpost.render.render_post",
+                        lambda *a, **k: {"png": b"\x89PNG", "how": "mock"})
+    r = client.post("/some/api/bunke/2026-07-31/1/nytt-bilde")
+    assert "Nytt bilde" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["body"] == "brødtekst"          # teksten urørt
+    assert d["png_path"] and Path(d["png_path"]).exists()

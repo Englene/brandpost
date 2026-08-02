@@ -1023,6 +1023,69 @@ def api_bunke_pass(request: Request, day: str, nr: int, brand: str | None = None
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 
+@router.post("/api/bunke/{day}/{nr}/rediger", response_class=HTMLResponse)
+def api_bunke_rediger(request: Request, day: str, nr: int,
+                      headline: str = Form(""), body: str = Form(""),
+                      brand: str | None = None):
+    """Rett teksten selv, uten modellkall.
+
+    De fleste innvendingene er små: en setning for mye, et ord som skurrer. Å be
+    modellen skrive om alt for det er både tregt og risikabelt, siden den gjerne
+    endrer mer enn du ba om. Her endrer du nøyaktig det du vil.
+
+    Bildet røres ikke: teksten kan være rettet uten at motivet er feil. Trenger du
+    nytt bilde, ligger knappen ved siden av."""
+    v = vault_path()
+    mpath, manifest, idx, draft = _resolve(v, day, nr)
+    if not (body or "").strip():
+        return _err("Teksten kan ikke være tom.")
+
+    felter = {"body": store.clean_text(body)}
+    if (headline or "").strip():
+        felter["headline"] = store.clean_text(headline)
+    # Spec-en er kilden når bildet senere regenereres, så den må følge teksten.
+    spec = dict(draft.get("spec") or {})
+    spec.update({k: v2 for k, v2 in felter.items()})
+    felter["spec"] = spec
+    oppdatert = store.update_draft_fields(mpath, manifest, idx, felter)
+
+    ctx = _bunke_ctx(v, brand)
+    ctx["d"] = oppdatert
+    ctx["d"]["day"] = day
+    ctx["kilder"] = [k for k in (oppdatert.get("kilder") or []) if isinstance(k, str)]
+    ctx["media"] = _bunke_media(v, {**oppdatert, "day": day})
+    ctx["slides"] = _bunke_slides(v, {**oppdatert, "day": day})
+    ctx["flash"] = "Lagret."
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
+
+
+@router.post("/api/bunke/{day}/{nr}/nytt-bilde", response_class=HTMLResponse)
+def api_bunke_nytt_bilde(request: Request, day: str, nr: int,
+                         brand: str | None = None):
+    """Bare nytt bilde, samme tekst. For når teksten sitter men motivet bommer."""
+    v = vault_path()
+    mpath, manifest, idx, draft = _resolve(v, day, nr)
+    if draft.get("type") == "karusell":
+        return _err("Karuseller bygges om fra kalenderen, ikke herfra.")
+    try:
+        merke = brandkit.load_brand(draft.get("brand") or "demo")
+        spec = dict(draft.get("spec") or {})
+        spec.setdefault("headline", draft.get("headline", ""))
+        result = rendermod.render_post(spec, brand=merke)
+        store.attach_image(mpath, manifest, idx, result["png"])
+    except Exception as e:  # noqa: BLE001
+        return _err(f"Bildet feilet: {e}")
+
+    _, _, _, ferdig = _resolve(v, day, nr)
+    ctx = _bunke_ctx(v, brand)
+    ctx["d"] = ferdig
+    ctx["d"]["day"] = day
+    ctx["kilder"] = [k for k in (ferdig.get("kilder") or []) if isinstance(k, str)]
+    ctx["media"] = _bunke_media(v, {**ferdig, "day": day})
+    ctx["flash"] = "Nytt bilde."
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
+
+
 @router.post("/api/bunke/{day}/{nr}/rett", response_class=HTMLResponse)
 def api_bunke_rett(request: Request, day: str, nr: int, note: str = Form(...),
                    brand: str | None = None):
