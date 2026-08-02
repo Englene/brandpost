@@ -578,13 +578,15 @@ def _normalize_pillars(posts: list[dict], brand) -> None:
 
 
 def _slipp_bunkelaas(vault) -> None:
-    """Fjern påfyll-låsen dashbordet satte.
+    """Fjern DENNE kjøringens påfyll-lås (filnavnet er vår egen pid).
 
-    Låsa hindrer at to påfyll kjører samtidig og lager tjue forslag i stedet for
-    ti. Slippes den ikke her, blir den stående til 15-minutters foreldelsen slår
-    inn, og eieren står med en bunke som ikke fylles."""
+    Låsene begrenser hvor mange påfyll som kan gå samtidig, ikke om noen kan gå.
+    Derfor må hver kjøring slippe nøyaktig sin egen: sletter vi feil fil, får
+    dashbordet plass til en runde for mye. Slippes den ikke i det hele tatt, blir
+    plassen okkupert til foreldelsen slår inn, og bunken slutter å fylles."""
     try:
-        (store.socials_dir(vault) / ".bunke-paafyll.lock").unlink(missing_ok=True)
+        (store.socials_dir(vault) / ".bunke-paafyll" / f"{os.getpid()}.lock").unlink(
+            missing_ok=True)
     except OSError:
         pass
 

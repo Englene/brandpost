@@ -796,12 +796,19 @@ def _neste_postdag(v: Path) -> str:
     return (date.today() + timedelta(days=1)).isoformat()
 
 
-# Under denne vannstanden bestilles påfyll. Fem er ikke tilfeldig: ett bilde tar
-# rundt 21 sekunder, så ti nye er klare på et par minutter med parallellitet,
-# mens eieren bruker lengre tid enn det på å vurdere de fem som er igjen. Da
-# møter han aldri en tom bunke, bortsett fra aller første gang.
-BUNKE_MIN = int(os.environ.get("BRANDPOST_BUNKE_MIN", "5"))
+# Bunken skal aldri stoppe. Tallene er satt etter hvor lang tid et påfyll faktisk
+# tar: modellkallet dominerer og en runde på ti bruker fem til ti minutter, mens
+# eieren swiper gjennom ti forslag på langt mindre. En terskel på fem var derfor
+# for lav, og bunken gikk tom midt i økta.
+#
+# Nå bestilles påfyll allerede ved femten igjen, og opptil to runder kan lages
+# samtidig. Da fylles det raskere enn det tømmes, og han kan planlegge langt fram
+# i én økt uten å vente.
+BUNKE_MIN = int(os.environ.get("BRANDPOST_BUNKE_MIN", "15"))
 BUNKE_PAAFYLL = int(os.environ.get("BRANDPOST_BUNKE_PAAFYLL", "10"))
+BUNKE_SAMTIDIGE = int(os.environ.get("BRANDPOST_BUNKE_SAMTIDIGE", "2"))
+# En lås eldre enn dette er en krasjet kjøring, ikke en pågående.
+BUNKE_LAAS_MAKS_S = 20 * 60
 
 
 def _etterfyll_bunke(brand: str) -> bool:
@@ -817,37 +824,73 @@ def _etterfyll_bunke(brand: str) -> bool:
     meetingnotes/looper/DEPLOY.md). Skal du teste påfyllet manuelt, gjør det
     gjennom dashbordet, ikke fra en ssh-økt."""
     merke = brand if brand and brand != ALLE_MERKER else (brandkit.enabled_brands() or ["demo"])[0]
-    laas = store.socials_dir(vault_path()) / ".bunke-paafyll.lock"
-    try:
-        # O_EXCL: den som lager fila vinner, resten lar være.
-        fd = os.open(laas, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        # Eldre enn 15 min er en død lås etter en krasj, ikke en kjøring.
+    laasdir = store.socials_dir(vault_path()) / ".bunke-paafyll"
+    laasdir.mkdir(parents=True, exist_ok=True)
+
+    # Rydd døde låser først: en krasjet kjøring skal ikke okkupere en plass for
+    # alltid. Deretter: er det ledig kapasitet?
+    aktive = 0
+    for f in laasdir.glob("*.lock"):
         try:
-            if time.time() - laas.stat().st_mtime > 900:
-                laas.unlink(missing_ok=True)
+            if time.time() - f.stat().st_mtime > BUNKE_LAAS_MAKS_S:
+                f.unlink(missing_ok=True)
+            else:
+                aktive += 1
         except OSError:
             pass
+    if aktive >= BUNKE_SAMTIDIGE:
         return False
-    os.close(fd)
 
     logg = Path.home() / ".notater" / "some-bunke.log"
     logg.parent.mkdir(parents=True, exist_ok=True)
     with open(logg, "ab") as f:
-        f.write(f"\n--- påfyll {datetime.now():%F %T} merke={merke} ---\n".encode())
-        subprocess.Popen(
+        f.write(f"\n--- påfyll {datetime.now():%F %T} merke={merke} "
+                f"({aktive + 1}/{BUNKE_SAMTIDIGE} samtidige) ---\n".encode())
+        p = subprocess.Popen(
             [sys.executable, "-m", "brandpost.cli", "run",
              "--brand", merke, "--bunke", str(BUNKE_PAAFYLL)],
             stdout=f, stderr=subprocess.STDOUT, start_new_session=True,
             cwd=str(Path.cwd()),
         )
+    # Låsen bærer pid-en, så cli-en kan slippe nøyaktig sin egen og ikke en annen
+    # kjørings. En binær lås gjorde at to runder aldri kunne gå samtidig, og da
+    # tømtes bunken raskere enn den fyltes.
+    (laasdir / f"{p.pid}.lock").touch()
     return True
 
 
-def _kanskje_etterfyll(igjen: int, brand: str) -> bool:
-    if igjen > BUNKE_MIN:
+def _paafyll_kjorer() -> bool:
+    """Er det et påfyll i gang akkurat nå?
+
+    Brukes til å skille «bunken er ferdig» fra «bunken venter på flere». De to
+    ser like ut for eieren, men betyr helt ulike ting."""
+    laasdir = store.socials_dir(vault_path()) / ".bunke-paafyll"
+    if not laasdir.is_dir():
         return False
-    return _etterfyll_bunke(brand)
+    for f in laasdir.glob("*.lock"):
+        try:
+            if time.time() - f.stat().st_mtime <= BUNKE_LAAS_MAKS_S:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def _kanskje_etterfyll(igjen: int, brand: str) -> int:
+    """Bestill så mange runder som trengs, og returner hvor mange som startet.
+
+    Én runde av gangen holdt ikke da bunken var nesten tom: eieren swiper fortere
+    enn modellen skriver, og han skal kunne planlegge langt fram i én økt uten å
+    møte en tom skjerm."""
+    if igjen > BUNKE_MIN:
+        return 0
+    mangler = max(1, -(-(BUNKE_MIN + BUNKE_PAAFYLL - igjen) // BUNKE_PAAFYLL))
+    startet = 0
+    for _ in range(min(mangler, BUNKE_SAMTIDIGE)):
+        if not _etterfyll_bunke(brand):
+            break                      # ingen ledig kapasitet
+        startet += 1
+    return startet
 
 
 def _tavle_ctx(v: Path, brand: str | None) -> dict:
@@ -930,15 +973,21 @@ def bunke(request: Request, brand: str | None = None):
     # Også ved åpning, ikke bare ved swipe: kommer du tilbake til en bunke som
     # alt er tom, skal påfyllet være i gang før du rekker å lure på hvorfor det
     # ikke skjer noe.
-    if _kanskje_etterfyll(ctx["igjen"], ctx["brand"]):
-        ctx["flash"] = f"Henter {BUNKE_PAAFYLL} nye forslag i bakgrunnen."
+    n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
+    if n:
+        ctx["flash"] = f"Henter {n * BUNKE_PAAFYLL} nye forslag i bakgrunnen."
+    ctx["fyller"] = bool(n) or _paafyll_kjorer()
     return templates.TemplateResponse(request, "some/bunke.html", ctx)
 
 
 @router.get("/api/bunke/neste", response_class=HTMLResponse)
 def api_bunke_neste(request: Request, brand: str | None = None):
-    return templates.TemplateResponse(request, "some/bunke_kort.html",
-                                      _bunke_ctx(vault_path(), brand))
+    """Pollet mens bunken venter på påfyll. Bestiller også selv, i tilfelle den
+    forrige runden rakk å dø uten å levere."""
+    ctx = _bunke_ctx(vault_path(), brand)
+    n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
+    ctx["fyller"] = bool(n) or _paafyll_kjorer()
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 
 @router.post("/api/bunke/{day}/{nr}/pass", response_class=HTMLResponse)
@@ -948,8 +997,10 @@ def api_bunke_pass(request: Request, day: str, nr: int, brand: str | None = None
     mpath, manifest, idx, _ = _resolve(v, day, nr)
     store.mark_verdict(mpath, manifest, idx, "passed")
     ctx = _bunke_ctx(v, brand)
-    if _kanskje_etterfyll(ctx["igjen"], ctx["brand"]):
-        ctx["flash"] = f"Henter {BUNKE_PAAFYLL} nye forslag i bakgrunnen."
+    n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
+    if n:
+        ctx["flash"] = f"Henter {n * BUNKE_PAAFYLL} nye forslag i bakgrunnen."
+    ctx["fyller"] = bool(n) or _paafyll_kjorer()
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 
@@ -1044,8 +1095,10 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
     ctx = _bunke_ctx(v, brand)
     naar = f"{when[8:10]}.{when[5:7]} kl. {when[11:16]}"
     ctx["flash"] = f"Planlagt {naar}."
-    if _kanskje_etterfyll(ctx["igjen"], ctx["brand"]):
-        ctx["flash"] += f" Henter {BUNKE_PAAFYLL} nye i bakgrunnen."
+    n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
+    if n:
+        ctx["flash"] += f" Henter {n * BUNKE_PAAFYLL} nye i bakgrunnen."
+    ctx["fyller"] = bool(n) or _paafyll_kjorer()
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
 

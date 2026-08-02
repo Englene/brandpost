@@ -9,16 +9,34 @@
   {% endif %}
 
   {% if not d %}
-    <div class="border border-ink-700 rounded-2xl p-10 text-center">
-      <div class="text-4xl mb-3">🎉</div>
-      <div class="text-lg font-semibold">Bunken er tom</div>
-      <div class="text-sm text-paper/50 mt-2">
-        Alle forslag er vurdert. Generer nye fra kalenderen, eller kom tilbake
-        etter neste kjøring.
+    {# «Tom» og «venter på flere» ser like ut for eieren, men betyr helt ulike
+       ting. Er et påfyll i gang, poller siden til det kommer, i stedet for å
+       la ham tro at han er ferdig. #}
+    {% if fyller %}
+      <div class="border border-ink-700 rounded-2xl p-10 text-center"
+           hx-get="/some/api/bunke/neste?brand={{ brand }}"
+           hx-trigger="every 15s"
+           hx-target="#bunke-kort" hx-swap="outerHTML">
+        <div class="text-4xl mb-3">⏳</div>
+        <div class="text-lg font-semibold">Lager flere forslag</div>
+        <div class="text-sm text-paper/50 mt-2">
+          Tar noen minutter: teksten skrives først, så lages bildene.
+          Siden oppdaterer seg selv når de er klare.
+        </div>
       </div>
-      <a href="/some" class="inline-block mt-4 text-sm text-paper/70 hover:text-paper underline">
-        Til kalenderen</a>
-    </div>
+    {% else %}
+      <div class="border border-ink-700 rounded-2xl p-10 text-center">
+        <div class="text-4xl mb-3">🎉</div>
+        <div class="text-lg font-semibold">Bunken er tom</div>
+        <div class="text-sm text-paper/50 mt-2">
+          Alle forslag er vurdert, og påfyllet kom ikke i gang. Last siden på nytt,
+          så bestilles det.
+        </div>
+        <a href="/some/bunke?brand={{ brand }}"
+           class="inline-block mt-4 text-sm text-paper/70 hover:text-paper underline">
+          Hent flere</a>
+      </div>
+    {% endif %}
   {% else %}
     <div class="flex items-center justify-between text-xs text-paper/40">
       <span>{{ igjen }} igjen i bunken</span>

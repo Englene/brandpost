@@ -367,13 +367,19 @@ def test_bildefeil_mister_ikke_planleggingen(bunke_client, monkeypatch):
     assert d["scheduled_at"] == "2026-08-05T10:00"
 
 
-def test_vurderte_utkast_forsvinner_fra_bunken(bunke_client):
+def test_vurderte_utkast_forsvinner_fra_bunken(bunke_client, monkeypatch):
+    """Bunken skal aldri stoppe: er den tom, står det at flere er på vei, ikke at
+    du er ferdig (Oscar 31. juli). De to betyr helt ulike ting."""
     client, tmp_path, mpath = bunke_client
+    from web import app as somemod
+    monkeypatch.setattr(somemod, "_etterfyll_bunke", lambda brand: True)
+
     client.post("/some/api/bunke/2026-07-31/1/pass")
     client.post("/some/api/bunke/2026-07-31/2/pass")
     r = client.get("/some/bunke")
-    assert "Bunken er tom" in r.text
     assert store.unjudged_drafts(tmp_path) == []
+    assert "Lager flere forslag" in r.text
+    assert "Bunken er tom" not in r.text
 
 
 def test_kalenderen_har_lenke_til_bunken(bunke_client):
@@ -410,40 +416,46 @@ def test_etterfyll_venter_naar_det_er_nok_igjen(bunke_client, monkeypatch):
     assert startet == []
 
 
-def test_laasen_hindrer_to_paafyll_samtidig(bunke_client, monkeypatch):
-    """Uten lås ville to raske swipes bestilt tjue forslag i stedet for ti."""
+def test_paafyllet_kjorer_riktig_kommando(bunke_client, monkeypatch):
     client, tmp_path, _ = bunke_client
     from web import app as somemod
 
     kjort: list[list[str]] = []
-    monkeypatch.setattr(somemod.subprocess, "Popen",
-                        lambda cmd, **kw: kjort.append(cmd) or None)
-    assert somemod._etterfyll_bunke("demo") is True
-    assert somemod._etterfyll_bunke("demo") is False    # låst
-    assert len(kjort) == 1
-    assert "--bunke" in kjort[0]
 
-    # cli slipper låsen når kjøringen er ferdig
-    from brandpost import cli
-    cli._slipp_bunkelaas(tmp_path)
+    class _P:
+        pid = 777
+
+    def _fake(cmd, **kw):
+        kjort.append(cmd)
+        return _P()
+    monkeypatch.setattr(somemod.subprocess, "Popen", _fake)
+
     assert somemod._etterfyll_bunke("demo") is True
+    assert "--bunke" in kjort[0]
+    assert str(somemod.BUNKE_PAAFYLL) in kjort[0]
+    assert "demo" in kjort[0]
 
 
 def test_doed_laas_foreldes(bunke_client, monkeypatch):
-    """En lås fra en krasjet kjøring skal ikke stenge bunken for alltid."""
+    """En lås fra en krasjet kjøring skal ikke okkupere en plass for alltid."""
     client, tmp_path, _ = bunke_client
     from web import app as somemod
-    monkeypatch.setattr(somemod.subprocess, "Popen", lambda cmd, **kw: None)
 
-    laas = store.socials_dir(tmp_path) / ".bunke-paafyll.lock"
-    laas.parent.mkdir(parents=True, exist_ok=True)
-    laas.write_text("")
+    class _P:
+        pid = 4242
+    monkeypatch.setattr(somemod.subprocess, "Popen", lambda cmd, **kw: _P())
+    monkeypatch.setattr(somemod, "BUNKE_SAMTIDIGE", 1)
+
+    laasdir = store.socials_dir(tmp_path) / ".bunke-paafyll"
+    laasdir.mkdir(parents=True, exist_ok=True)
+    doed = laasdir / "999.lock"
+    doed.write_text("")
     import os as _os
-    gammelt = time.time() - 1200                      # 20 min
-    _os.utime(laas, (gammelt, gammelt))
+    gammelt = time.time() - (somemod.BUNKE_LAAS_MAKS_S + 60)
+    _os.utime(doed, (gammelt, gammelt))
 
-    assert somemod._etterfyll_bunke("demo") is False  # rydder den døde låsen
-    assert somemod._etterfyll_bunke("demo") is True   # og slipper neste gjennom
+    assert somemod._etterfyll_bunke("demo") is True   # rydder den døde og starter
+    assert not doed.exists()
 
 
 # ── Avviste som mønster, ikke bare sperreliste ───────────────────────────────
@@ -621,8 +633,10 @@ def test_laasen_slippes_ogsaa_naar_genereringen_kaster(tmp_path, monkeypatch):
     bunke-modus møtte ekte data: ti utkast sprengte modell-timeouten."""
     from brandpost import cli
     monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
-    laas = store.socials_dir(tmp_path) / ".bunke-paafyll.lock"
-    laas.parent.mkdir(parents=True, exist_ok=True)
+    import os as _os
+    laasdir = store.socials_dir(tmp_path) / ".bunke-paafyll"
+    laasdir.mkdir(parents=True, exist_ok=True)
+    laas = laasdir / f"{_os.getpid()}.lock"
     laas.write_text("")
 
     def _sprekk(args):
