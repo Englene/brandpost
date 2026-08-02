@@ -693,7 +693,7 @@ def _cmd_run(args) -> int:
     coverage = store.pillar_coverage(vault, brandkit.pillar_ids(brand))
     # Emne-karantene. To vinduer med vilje: det som er ute eller på vei ut er
     # forbudt, det eieren har swipet vekk er bare uønsket. Se blocked_topics.
-    sperret = store.blocked_topics(vault)
+    sperret = store.blocked_topics(vault, brand_key=brand.key)
     # Slot-fylling: hver kjøring fyller ukas ÅPNE plan-slots (ett utkast per
     # publiseringsdag framover), ikke flere varianter for samme dag. Uten plan
     # faller vi tilbake til args.n utkast for i dag.
@@ -727,7 +727,7 @@ def _cmd_run(args) -> int:
               "foreslått før uten å bli publisert:\n"
             + json.dumps(angles, ensure_ascii=False)
             + _emne_block(sperret)
-            + _avvist_block(store.rejected_recently(vault))
+            + _avvist_block(store.rejected_recently(vault, brand_key=brand.key))
             + ("\n\nLÆRDOMMER (hva som har funket, bruk det):\n" + lessons if lessons else "")
             + slot_block
             + "\n\nVARIASJON (rettingen 22. juli): bytt ÅPNINGSGREP mellom "

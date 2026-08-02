@@ -416,7 +416,8 @@ SOFT_TOPIC_DAYS = 10
 
 
 def rejected_recently(vault: Path | None = None, now: datetime | None = None,
-                      days: int = SOFT_TOPIC_DAYS, n: int = 12) -> list[dict]:
+                      days: int = SOFT_TOPIC_DAYS, n: int = 12,
+                      brand_key: str = "") -> list[dict]:
     """Det eieren nylig har swipet vekk, med overskrift og motiv.
 
     blocked_topics gir bare EMNENE. Det holder til å sperre, men ikke til å lære:
@@ -433,6 +434,8 @@ def rejected_recently(vault: Path | None = None, now: datetime | None = None,
             continue
         for d in manifest.get("drafts") or []:
             if not isinstance(d, dict) or d.get("verdict") != "passed":
+                continue
+            if brand_key and d.get("brand") != brand_key:
                 continue
             nar = _draft_time(d, mpath.parent.name, ("verdict_at",))
             if not nar or nar < grense:
@@ -521,7 +524,8 @@ def mark_verdict(manifest_path: Path, manifest: dict, idx: int, verdict: str) ->
 
 def blocked_topics(vault: Path | None = None, now: datetime | None = None,
                    hard_days: int = HARD_TOPIC_DAYS,
-                   soft_days: int = SOFT_TOPIC_DAYS) -> dict[str, list[str]]:
+                   soft_days: int = SOFT_TOPIC_DAYS,
+                   brand_key: str = "") -> dict[str, list[str]]:
     """Emner som ikke skal foreslås igjen ennå.
 
     → {"hard": [...], "soft": [...]}
@@ -535,7 +539,12 @@ def blocked_topics(vault: Path | None = None, now: datetime | None = None,
 
     Datoen leses fra utkastets egen tidslinje, ikke fra dagsmappa: et innlegg laget
     mandag kan være planlagt til fredag, og det er når det er UTE som avgjør hvor
-    lenge emnet skal ligge lavt."""
+    lenge emnet skal ligge lavt.
+
+    `brand_key` avgrenser til ett merke. Karantenen var global til 2. august 2026,
+    og da ville ett merkes innlegg sperret temaet for alle andre. To selskaper som
+    begge skriver om samme fagfelt har hver sine følgere og hver sin plan; at det
+    ene har brukt en vinkel er ingen grunn til at det andre ikke kan."""
     now = now or datetime.now()
     hard_grense = now - timedelta(days=hard_days)
     soft_grense = now - timedelta(days=soft_days)
@@ -550,6 +559,8 @@ def blocked_topics(vault: Path | None = None, now: datetime | None = None,
         dagsdato = mpath.parent.name
         for d in manifest.get("drafts") or []:
             if not isinstance(d, dict):
+                continue
+            if brand_key and d.get("brand") != brand_key:
                 continue
             emne = clean_topic(d.get("emne"))
             if not emne:

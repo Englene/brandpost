@@ -801,3 +801,38 @@ def test_ingen_hurtigtaster_i_bunken(bunke_client):
     assert "ArrowLeft" not in r.text
     assert "ArrowRight" not in r.text
     assert "keydown" not in r.text
+
+
+# ── Flere merker deler ikke karantene ────────────────────────────────────────
+
+def test_karantenen_er_per_merke(tmp_path):
+    """To selskaper som skriver om samme fagfelt har hver sine følgere og hver sin
+    plan. At det ene har brukt en vinkel er ingen grunn til at det andre ikke kan.
+
+    Karantenen var global til 2. august 2026, og ville sperret Vitandi fra alt
+    Tilskudd.ai hadde skrevet om."""
+    _dag(tmp_path, "2026-07-28", [
+        {"emne": "skattefunn-frist", "brand": "tilskudd", "status": "planlagt",
+         "scheduled_at": "2026-07-29T10:00"},
+        {"emne": "egen-vinkel", "brand": "vitandi", "status": "planlagt",
+         "scheduled_at": "2026-07-29T10:00"},
+    ])
+    tilskudd = store.blocked_topics(tmp_path, now=NOW, brand_key="tilskudd")
+    vitandi = store.blocked_topics(tmp_path, now=NOW, brand_key="vitandi")
+
+    assert tilskudd["hard"] == ["skattefunn-frist"]
+    assert vitandi["hard"] == ["egen-vinkel"]
+    # uten merke: alt, som før (brukes av verktøy som vil se hele bildet)
+    assert set(store.blocked_topics(tmp_path, now=NOW)["hard"]) == {
+        "skattefunn-frist", "egen-vinkel"}
+
+
+def test_avviste_forslag_er_ogsaa_per_merke(tmp_path):
+    _dag(tmp_path, "2026-07-30", [
+        {"headline": "Tilskudds nei", "brand": "tilskudd", "emne": "a",
+         "verdict": "passed", "verdict_at": "2026-07-30T09:00"},
+        {"headline": "Vitandis nei", "brand": "vitandi", "emne": "b",
+         "verdict": "passed", "verdict_at": "2026-07-30T09:00"},
+    ])
+    ut = store.rejected_recently(tmp_path, now=NOW, brand_key="vitandi")
+    assert [x["headline"] for x in ut] == ["Vitandis nei"]
