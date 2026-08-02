@@ -836,3 +836,50 @@ def test_avviste_forslag_er_ogsaa_per_merke(tmp_path):
     ])
     ut = store.rejected_recently(tmp_path, now=NOW, brand_key="vitandi")
     assert [x["headline"] for x in ut] == ["Vitandis nei"]
+
+
+def test_tidsvelgeren_er_per_merke(tmp_path, monkeypatch):
+    """To selskaper har hver sin firmaside og hver sine følgere, så at det ene
+    poster mandag er ingen grunn til at det andre ikke kan. Uten merke-filter
+    blokkerte Tilskudd.ai alle datoer for Vitandi, og Vitandi kunne ikke
+    planlegges i det hele tatt (Oscar 2. august)."""
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    from web import app as somemod
+
+    forste = somemod._ledige_tider(tmp_path)[0]["verdi"][:10]
+    _dag(tmp_path, "2026-01-02", [{"headline": "Tilskudds innlegg", "brand": "tilskudd",
+                                   "status": "planlagt",
+                                   "scheduled_at": f"{forste}T10:00"}])
+
+    tilskudd = somemod._ledige_tider(tmp_path, brand_key="tilskudd")
+    vitandi = somemod._ledige_tider(tmp_path, brand_key="vitandi")
+
+    assert [t for t in tilskudd if t["verdi"][:10] == forste][0]["opptatt"] is True
+    assert [t for t in vitandi if t["verdi"][:10] == forste][0]["opptatt"] is False
+    # forvalget skal hoppe over for tilskudd, men ikke for vitandi
+    assert somemod._neste_postdag(tmp_path, "tilskudd") != forste
+    assert somemod._neste_postdag(tmp_path, "vitandi") == forste
+
+
+def test_velgeren_strekker_seg_til_den_finner_ledige_dager(tmp_path, monkeypatch):
+    """Er de neste ukene fylt opp, må lista gå lenger fram. 2. august sto eieren
+    med elleve valg der alle var grå, og ingen vei videre."""
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    from web import app as somemod
+
+    # Fyll opp alle publiseringsdager de neste seks ukene
+    booket = []
+    dag = date.today() + timedelta(days=1)
+    for _ in range(42):
+        from brandpost import plan as planmod
+        if dag.weekday() in planmod.POST_DAYS:
+            booket.append({"headline": f"Booket {dag}", "brand": "demo",
+                           "status": "planlagt", "scheduled_at": f"{dag.isoformat()}T10:00"})
+        dag += timedelta(days=1)
+    _dag(tmp_path, "2026-01-02", booket)
+
+    ledige = somemod._ledige_tider(tmp_path, antall=3, brand_key="demo")
+    frie = [t for t in ledige if not t["opptatt"]]
+    assert len(frie) >= 3, "velgeren ga ingen ledige dager selv om det finnes senere"
+    # og forvalget skal peke på en av dem
+    assert somemod._neste_postdag(tmp_path, "demo") == frie[0]["verdi"][:10]

@@ -702,8 +702,9 @@ def _bunke_ctx(v: Path, brand: str | None) -> dict:
         # media-URL-ene, siden bildet ikke er laget ennå.
         ctx["d"] = d
         ctx["kilder"] = [k for k in (d.get("kilder") or []) if isinstance(k, str)]
-        ctx["suggest_dt"] = f"{_neste_postdag(v)}T{_suggest_time()}"
-        ctx["ledige"] = _ledige_tider(v)
+        mk = "" if merke == ALLE_MERKER else merke
+        ctx["suggest_dt"] = f"{_neste_postdag(v, mk)}T{_suggest_time()}"
+        ctx["ledige"] = _ledige_tider(v, brand_key=mk)
         # Media-URL utledes lokalt fra filNAVN: stiene i manifestet er absolutte
         # og maskinspesifikke, så et utkast generert på en annen maskin ville
         # pekt på en sti som ikke finnes her.
@@ -746,8 +747,12 @@ def _bunke_slides(v: Path, d: dict) -> list[str]:
 _NO_DAYS = ("mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag")
 
 
-def _opptatte_dager(v: Path) -> dict[str, str]:
-    """Dato → overskriften som alt ligger der (planlagt eller publisert)."""
+def _opptatte_dager(v: Path, brand_key: str = "") -> dict[str, str]:
+    """Dato → overskriften som alt ligger der (planlagt eller publisert).
+
+    Avgrenses til ett merke. To selskaper har hver sin firmaside og hver sine
+    følgere, så at Tilskudd.ai poster mandag er ingen grunn til at Vitandi ikke
+    kan. Uten dette blokkerte det ene merket alle datoer for det andre."""
     ut: dict[str, str] = {}
     for mpath in store.socials_dir(v).glob("*/manifest.json"):
         try:
@@ -757,40 +762,49 @@ def _opptatte_dager(v: Path) -> dict[str, str]:
         for d in manifest.get("drafts") or []:
             if not isinstance(d, dict):
                 continue
+            if brand_key and d.get("brand") != brand_key:
+                continue
             naar = d.get("published_at") or d.get("scheduled_at")
             if naar:
                 ut[str(naar)[:10]] = (d.get("headline") or "")[:40]
     return ut
 
 
-def _ledige_tider(v: Path, antall: int = 12) -> list[dict]:
+def _ledige_tider(v: Path, antall: int = 12, brand_key: str = "") -> list[dict]:
     """Kommende publiseringsdager som valg, med opptatte tydelig merket.
 
     Et fritt datofelt lot eieren legge to innlegg på samme dag uten å merke det
     før etterpå. Her ser han hele bildet mens han velger: hvilke dager som er
     ledige, og hva som allerede ligger på de som ikke er det."""
-    opptatt = _opptatte_dager(v)
+    opptatt = _opptatte_dager(v, brand_key)
     tid = _suggest_time()
     ut: list[dict] = []
+    ledige = 0
     dag = date.today() + timedelta(days=1)
-    for _ in range(90):
-        if len(ut) >= antall:
+    # Vi teller LEDIGE dager, ikke dager totalt. Er de neste ukene fylt opp, må
+    # lista strekke seg lenger fram; ellers står eieren med et nedtrekk der alt er
+    # grått og ingen vei videre. Det skjedde 2. august: elleve valg, alle opptatt.
+    for _ in range(400):
+        if ledige >= antall:
             break
         if dag.weekday() in planmod.POST_DAYS:
             iso = dag.isoformat()
+            er_opptatt = iso in opptatt
             ut.append({
                 "verdi": f"{iso}T{tid}",
                 "tekst": f"{_NO_DAYS[dag.weekday()]} {dag.day}. {_NO_MONTHS[dag.month - 1]}",
-                "opptatt": iso in opptatt,
+                "opptatt": er_opptatt,
                 "hva": opptatt.get(iso, ""),
             })
+            if not er_opptatt:
+                ledige += 1
         dag += timedelta(days=1)
     return ut
 
 
-def _neste_postdag(v: Path) -> str:
+def _neste_postdag(v: Path, brand_key: str = "") -> str:
     """Første ledige publiseringsdag fram i tid, som forvalg i velgeren."""
-    for t in _ledige_tider(v):
+    for t in _ledige_tider(v, brand_key=brand_key):
         if not t["opptatt"]:
             return t["verdi"][:10]
     return (date.today() + timedelta(days=1)).isoformat()
@@ -958,8 +972,10 @@ def _tavle_ctx(v: Path, brand: str | None) -> dict:
     kolonner["denne_uka"].sort(key=lambda r: (r["dato"], r["tid"]))
     kolonner["senere"].sort(key=lambda r: (r["dato"], r["tid"]))
     kolonner["ute"] = kolonner["ute"][:12]        # historikken er ikke poenget
+    mk = "" if merke == ALLE_MERKER else merke
     return {"kolonner": kolonner, "brand": merke,
-            "tomme_dager": [t for t in _ledige_tider(v) if not t["opptatt"]][:6]}
+            "tomme_dager": [t for t in _ledige_tider(v, brand_key=mk)
+                            if not t["opptatt"]][:6]}
 
 
 @router.get("/tavle", response_class=HTMLResponse)
