@@ -883,3 +883,68 @@ def test_velgeren_strekker_seg_til_den_finner_ledige_dager(tmp_path, monkeypatch
     assert len(frie) >= 3, "velgeren ga ingen ledige dager selv om det finnes senere"
     # og forvalget skal peke på en av dem
     assert somemod._neste_postdag(tmp_path, "demo") == frie[0]["verdi"][:10]
+
+
+# ── Påfyll skal aldri slette det eieren har vurdert ──────────────────────────
+
+def test_paafyll_beholder_vurderte_og_planlagte_utkast(tmp_path):
+    """2. august 2026: hvert påfyll slettet dagens egne utkast som ikke var
+    publisert, fordi merge_manifest antok «re-render = nytt forsøk». Eierens
+    swipes og planlagte innlegg forsvant, og dashbordet svarte 404 på numre som
+    hadde eksistert minutter før."""
+    from datetime import datetime as dt
+    naa = dt(2026, 8, 2, 12, 0)
+
+    # Første påfyll
+    store.merge_manifest(tmp_path, brand_key="demo", brand_name="Demo",
+                         new_drafts=[{"brand": "demo", "headline": "Første"}],
+                         when=naa, replace_own=False)
+    mpath, m = store.load_manifest(tmp_path, "2026-08-02")
+    # Eieren vurderer og planlegger det
+    m["drafts"][0]["verdict"] = "liked"
+    m["drafts"][0]["status"] = "planlagt"
+    m["drafts"][0]["scheduled_at"] = "2026-08-10T10:00"
+    mpath.write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+
+    # Neste påfyll, samme merke samme dag
+    store.merge_manifest(tmp_path, brand_key="demo", brand_name="Demo",
+                         new_drafts=[{"brand": "demo", "headline": "Andre"}],
+                         when=naa, replace_own=False)
+
+    _, m2 = store.load_manifest(tmp_path, "2026-08-02")
+    tekster = [d["headline"] for d in m2["drafts"]]
+    assert "Første" in tekster, "påfyllet slettet det eieren hadde planlagt"
+    assert "Andre" in tekster
+    forste = next(d for d in m2["drafts"] if d["headline"] == "Første")
+    assert forste["status"] == "planlagt"
+    assert forste["verdict"] == "liked"
+    # numrene skal være stabile: «publiser: N» og dashbord-lenker peker på dem
+    assert forste["nr"] == 1
+
+
+def test_vanlig_kjoering_erstatter_fortsatt(tmp_path):
+    """Den gamle oppførselen består der den hører hjemme: en re-render av dagens
+    slot-baserte kjøring ER et nytt forsøk på det samme."""
+    from datetime import datetime as dt
+    naa = dt(2026, 8, 2, 12, 0)
+    store.merge_manifest(tmp_path, brand_key="demo", brand_name="Demo",
+                         new_drafts=[{"brand": "demo", "headline": "Gammelt forsøk"}],
+                         when=naa)
+    store.merge_manifest(tmp_path, brand_key="demo", brand_name="Demo",
+                         new_drafts=[{"brand": "demo", "headline": "Nytt forsøk"}],
+                         when=naa)
+    _, m = store.load_manifest(tmp_path, "2026-08-02")
+    assert [d["headline"] for d in m["drafts"]] == ["Nytt forsøk"]
+
+
+def test_andre_merker_roeres_aldri(tmp_path):
+    from datetime import datetime as dt
+    naa = dt(2026, 8, 2, 12, 0)
+    store.merge_manifest(tmp_path, brand_key="vitandi", brand_name="Vitandi",
+                         new_drafts=[{"brand": "vitandi", "headline": "Vitandis"}],
+                         when=naa, replace_own=False)
+    store.merge_manifest(tmp_path, brand_key="demo", brand_name="Demo",
+                         new_drafts=[{"brand": "demo", "headline": "Demos"}],
+                         when=naa)                      # erstatter KUN sine egne
+    _, m = store.load_manifest(tmp_path, "2026-08-02")
+    assert "Vitandis" in [d["headline"] for d in m["drafts"]]

@@ -182,7 +182,8 @@ def _sanitize_spec(spec: dict, *, brand_name: str, handle: str = "",
 
 
 def _render_posts(vault: Path, brand, posts: list[dict],
-                  *, now: datetime | None = None) -> tuple[list[dict], list[Path]]:
+                  *, now: datetime | None = None,
+                  replace_own: bool = True) -> tuple[list[dict], list[Path]]:
     """Rendr specs gruppert på `slot_date` (default i dag) og merge inn i riktig
     dags-manifest per dato. Returnerer (safe-utkast på tvers av datoene, manifest-stier)."""
     now = now or datetime.now()
@@ -240,7 +241,8 @@ def _render_posts(vault: Path, brand, posts: list[dict],
         # Merge inn i dags-manifestet (aldri overskriv): to merker samme dag består
         # begge, og «publiser: nr»-numrene forblir unike for hele dagen.
         manifest_path, manifest = store.merge_manifest(
-            vault, brand_key=brand.key, brand_name=brand.name, new_drafts=safe, when=when)
+            vault, brand_key=brand.key, brand_name=brand.name, new_drafts=safe,
+            when=when, replace_own=replace_own)
         behold = len(manifest["drafts"]) - len(safe)
         print(f"  ✅ {ds}: {len(safe)} utkast (nr {safe[0]['nr']}-{safe[-1]['nr']}) "
               f"→ {manifest_path.parent}"
@@ -769,7 +771,8 @@ def _cmd_run(args) -> int:
     specs_path = store.socials_dir(vault) / f"_run-specs-{datetime.now():%Y%m%d-%H%M%S}.json"
     specs_path.write_text(json.dumps({"brand": args.brand, "posts": posts}, ensure_ascii=False),
                           encoding="utf-8")
-    safe, _paths = _render_posts(vault, brand, posts)
+    safe, _paths = _render_posts(vault, brand, posts,
+                                 replace_own=not bunke)
     if bunke:
         # Ingen slot-merking (forslagene tilhører ingen dag ennå) og ingen e-post:
         # bunken ER flaten. En epost per påfyll ville gitt eieren ti varsler om

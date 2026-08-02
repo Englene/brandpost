@@ -288,14 +288,24 @@ def record(vault: Path | None, drafts: list[dict], *, when: datetime | None = No
 
 
 def merge_manifest(vault: Path | None, *, brand_key: str, brand_name: str,
-                   new_drafts: list[dict], when: datetime | None = None) -> tuple[Path, dict]:
+                   new_drafts: list[dict], when: datetime | None = None,
+                   replace_own: bool = True) -> tuple[Path, dict]:
     """Slå nyrendrede utkast inn i dags-manifestet i stedet for å overskrive det,
     så to merker samme dag ikke visker ut hverandres utkast:
       - andre merkers utkast består urørt (samme nummer),
       - egne publiserte utkast består (publiseringslogg + engasjement-lesing),
       - egne uposterte utkast erstattes (re-render = nytt forslag),
       - nye utkast nummereres fra dagens teller ("seq"), som aldri teller ned.
-    Muterer new_drafts (setter "nr") og returnerer (sti, manifest)."""
+    Muterer new_drafts (setter "nr") og returnerer (sti, manifest).
+
+    `replace_own=False` AKKUMULERER i stedet: ingenting kastes.
+
+    Erstatningen ga mening da en dag hadde én kjøring, og en ny kjøring var et
+    nytt forsøk på det samme. Bunken fyller på flere ganger i timen, og da slettet
+    hvert påfyll både det eieren nettopp hadde swipet OG det han hadde planlagt
+    samme dag, siden bare «published» var vernet. 2. august 2026 forsvant utkast
+    han hadde vurdert, og dashbordet svarte 404 på numre som hadde eksistert
+    minutter før."""
     when = when or datetime.now()
     day_dir = socials_dir(vault) / when.strftime("%Y-%m-%d")
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -316,8 +326,11 @@ def merge_manifest(vault: Path | None, *, brand_key: str, brand_name: str,
         if not isinstance(d.get("nr"), int):
             d["nr"] = i  # eldre manifest uten nr: posisjonen VAR nummeret i eposten
         seq = max(seq, d["nr"])
-    kept = [d for d in old_drafts
-            if d.get("brand") != brand_key or d.get("status") == "published"]
+    if replace_own:
+        kept = [d for d in old_drafts
+                if d.get("brand") != brand_key or d.get("status") == "published"]
+    else:
+        kept = list(old_drafts)
     for d in new_drafts:
         seq += 1
         d["nr"] = seq
