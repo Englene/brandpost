@@ -7,6 +7,7 @@ from these files, so adding a brand needs zero code changes.
 brands/<key>/
   profile.toml        colours, fonts, pillars, LinkedIn page   (required)
   media/logo.png      optional. Without it, cards go typography-driven
+  media/library.toml  approved real images, isolated to this brand
   voice/writing.md    voice and rules            <- decides quality
   voice/design.md     visual style
   voice/archetype.md  personality
@@ -37,7 +38,9 @@ piece buys you.
 6. `[linkedin].org_urn` is your company page, and the only thing separating two
    pages that share an app and token. Find the ID in your admin URL
    (`linkedin.com/company/<ID>/admin/dashboard/`) and write it as
-   `urn:li:organization:<ID>`. Automatic lookup of the pages you administer needs
+   `urn:li:organization:<ID>`. A missing/invalid value blocks both preview and
+   live publishing; it never falls back to another brand's global URN. Automatic
+   lookup of the pages you administer needs
    the `r_organization_admin` scope, which this app does not request, so the URL is
    the way.
 7. `[linkedin].handle` is the `@handle` written into the post text to tag your page.
@@ -53,5 +56,10 @@ made before the rename keep working.
 
 - **profile.toml** (typed): palette hex, font filenames, media paths, pillar ids.
   Used by the renderer and the rotation engine.
+- **media/library.toml** (typed): `[[asset]]` rows with `id`, `file`,
+  `description`, `pillars`, `alt_text`, and `approved = true`. Files are relative
+  to the library. Unknown, unapproved, path-traversing, or another brand's IDs
+  are rejected. Approved images are contained without cropping on 1080x1350 and
+  are never redrawn by an image model.
 - **markdown**: all prose. Fed only into the brain's system prompt, never to the
   renderer. Edit freely without touching code.

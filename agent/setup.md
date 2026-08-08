@@ -69,8 +69,10 @@ Work like this:
    Set BRANDPOST_POST_DAYS in .env to the days I chose (0 = Monday). That field
    does not exist in profile.toml, so without this my cadence answer goes unused.
 
-4. Set up .env from .env.example. Ask me for the keys you need. NEVER write key
-   values back to me in the chat.
+4. Set up one local environment file from .env.example, `chmod 600` it, and set
+   `BRANDPOST_ENV_FILE` to its absolute path. Tell me which variable names are
+   needed, but NEVER ask me to send values in chat and never read them back to
+   me. I enter each value directly in the local file (or password manager) myself.
 
    If I have a Claude Code subscription, set BRANDPOST_MODEL_BACKEND=cli instead of
    asking for ANTHROPIC_API_KEY: text generation then costs nothing extra. An image

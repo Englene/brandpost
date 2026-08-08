@@ -90,7 +90,8 @@ def test_epostfeil_velter_ikke_publiseringen(tmp_path, monkeypatch):
 def test_dry_run_poster_ingenting(tmp_path, monkeypatch):
     mpath = _manifest(tmp_path, [_draft(1)])
     monkeypatch.setattr(publisher.linkedin, "publish_draft",
-                        lambda d, dry_run=None: {"posted": False, "dry_run": True})
+                        lambda d, dry_run=None: {"posted": False, "dry_run": True,
+                                                 "preview": {}})
     tall = publisher.publish_due(tmp_path, now=datetime(2026, 7, 23, 11, 0), dry_run=True)
     assert tall["publisert"] == 0 and tall["hoppet"] == 1
     assert json.loads(mpath.read_text())["drafts"][0]["status"] == "planlagt"
@@ -131,7 +132,8 @@ def test_uventet_torrkjoring_teller_som_feil(tmp_path, monkeypatch):
     suksess i loggen, men innlegget gikk aldri ut. Da skal jobben avslutte rødt."""
     _manifest(tmp_path, [_draft(1)])
     monkeypatch.setattr(publisher.linkedin, "publish_draft",
-                        lambda d, dry_run=None: {"posted": False, "dry_run": True})
+                        lambda d, dry_run=None: {"posted": False, "dry_run": True,
+                                                 "preview": {}})
 
     tall = publisher.publish_due(tmp_path, now=datetime(2026, 7, 23, 11, 0))
 
@@ -141,7 +143,8 @@ def test_uventet_torrkjoring_teller_som_feil(tmp_path, monkeypatch):
 def test_bedt_om_torrkjoring_er_ikke_feil(tmp_path, monkeypatch):
     _manifest(tmp_path, [_draft(1)])
     monkeypatch.setattr(publisher.linkedin, "publish_draft",
-                        lambda d, dry_run=None: {"posted": False, "dry_run": True})
+                        lambda d, dry_run=None: {"posted": False, "dry_run": True,
+                                                 "preview": {}})
 
     tall = publisher.publish_due(tmp_path, now=datetime(2026, 7, 23, 11, 0), dry_run=True)
 

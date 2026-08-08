@@ -216,14 +216,13 @@ https://platform.openai.com/api-keys
 Trykk **Create new secret key**, gi den navnet «brandpost», og kopier den med en
 gang.
 
-**4. Gi den til assistenten**
+**4. Lagre den lokalt, ikke i chat**
 
-```
-Her er OpenAI-nøkkelen min, legg den inn i .env og skru på AI-bilder:
-<lim inn nøkkelen>
-```
-
-Den lagres i en fil som heter `.env`, som aldri følger med hvis du deler mappa.
+Åpne miljøfila på din egen maskin, legg nøkkelen etter `OPENAI_API_KEY=`, lagre
+og kjør `chmod 600 <miljøfil>`. Sett `BRANDPOST_ENV_FILE` til akkurat denne fila.
+En assistent kan gjerne forklare hvor fila ligger, men du skal aldri sende selve
+nøkkelen eller innholdet i miljøfila til den. `.env` skal heller aldri deles,
+ZIP-es eller legges i Git.
 
 > Får du en side som ber deg «verifisere at du er et menneske», er det bare
 > OpenAIs vanlige bot-sjekk. Kryss av og fortsett.

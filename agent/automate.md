@@ -56,8 +56,8 @@ Give your recommendation with each question, briefly justified.
 - **Generation on which days?** Match `BRANDPOST_POST_DAYS`. Ask what time of day;
   early morning means drafts wait for me, not the other way around.
 - **Dashboard always on?** Recommended: it is where approval happens. Ask which
-  port, and whether it should be reachable from other machines on the network
-  (`--host 0.0.0.0`) or only this one (`127.0.0.1`, the safer default).
+  port, but bind it only to `127.0.0.1`. Fra en annen maskin brukes en vedvarende
+  SSH-tunnel; dashbordet skal ikke eksponeres på LAN-et.
 - **Which agent runs generation?** Claude Code has scheduled runs; otherwise it is
   a timed job that starts the agent with agent/generate.md as the prompt.
 
@@ -70,8 +70,8 @@ the system location: I lose them on the next machine.
 Every job file must set, explicitly:
 
 - **Absolute path** to the virtualenv's Python. Not `python`, not `python3`.
-- **Working directory** = this repo. `.env` is read from the working directory,
-  so getting this wrong means my configuration is silently never loaded.
+- **Working directory** = oppsettrepoet, pluss absolutte
+  `BRANDPOST_ENV_FILE`/`BRANDPOST_STATE_DIR`. Motoren bruker ingen `.env`-fallback.
 - **PATH**, including `/opt/homebrew/bin` and `/usr/local/bin` on macOS. Without
   it, `claude` and other tools are "not found" only when the scheduler runs them,
   never when I test by hand.
@@ -111,8 +111,8 @@ Every one of these fails quietly. There is no error message pointing at the caus
 - **The scheduler has a different environment than your shell.** This is the
   single most common cause. A job that works when you run it and fails on
   schedule is almost always PATH or working directory.
-- **`.env` is read from the working directory.** Set it wrong and the job runs
-  with default configuration, finds nothing, and reports success.
+- **Miljøfila velges eksplisitt.** Hver jobb må sette `BRANDPOST_ENV_FILE` og
+  `BRANDPOST_STATE_DIR`; motoren søker aldri i arbeidskatalogen eller egen klone.
 - **A laptop that sleeps** does not run missed jobs on wake for every scheduler.
   If the machine sleeps, say so and prefer intervals over exact clock times.
 - **Catch-up on publishing is deliberately limited.** The publisher refuses posts
@@ -121,9 +121,8 @@ Every one of these fails quietly. There is no error message pointing at the caus
 - **`brandpost.cli pulse` is a stub**, not a feature. It prints an explanation of
   the extension point. Putting it in a job gives you a step that looks successful
   and does nothing. See docs/extending.md.
-- **The dashboard on `0.0.0.0`** is reachable by anything on the network. It has
-  no authentication. Only do that on a network I control, and tell me that is what
-  it means.
+- **Ikke bind dashbordet til `0.0.0.0`.** Det har ingen brukerinnlogging. Bruk
+  `127.0.0.1` og SSH-tunnel også på et nett du kontrollerer.
 
 ## 6. Finish
 

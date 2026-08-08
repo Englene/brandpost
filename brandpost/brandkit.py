@@ -12,6 +12,7 @@ Hvert merke er en mappe under `brands/<key>/`:
   company/rules.md         miks, kadens, hva vi unngår, HARD-sperrene
   (norske navn merkevare/ og bedrift/ godtas fortsatt)
   media/logo.png tilda.png refs/  merke-spesifikke bilder
+  media/library.toml              godkjente, ekte publiseringsbilder
 
 Prosa-seksjonene er KUN til hjernen (cli.py). Renderer/prompts bruker bare de
 maskinlesbare feltene (palett, fonter, logo/media). Fonter deles via assets/fonts/
@@ -22,6 +23,7 @@ kode-endring. Se brands/README.md.
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -92,6 +94,23 @@ class Pillar:
 
 
 @dataclass(frozen=True)
+class MediaAsset:
+    """Én eksplisitt godkjent ressurs i merkets egen bildekatalog."""
+
+    id: str
+    file_path: Path
+    description: str
+    pillars: tuple[str, ...]
+    alt_text: str
+    approved: bool = False
+
+    @property
+    def file(self) -> Path:
+        """Bakovervennlig kortnavn internt; offentlig kontrakt er file_path."""
+        return self.file_path
+
+
+@dataclass(frozen=True)
 class Brand:
     key: str
     name: str          # hvordan merket skrives (Demo Labs)
@@ -102,6 +121,7 @@ class Brand:
     logo_path: Path | None = None
     tilda_path: Path | None = None
     refs: tuple[Path, ...] = ()      # stil-eksempler sendt til bilde-API-et
+    media_assets: tuple[MediaAsset, ...] = ()  # aldri delt på tvers av merker
     wordmark: str = ""               # ordmerke-tekst på kortet ("" -> bruk name)
     # Språket innleggene skrives på. Var hardkodet norsk i opphavet, helt ned i
     # bildepromptene, så et engelsk merke fikk norske etiketter i illustrasjonen.
@@ -116,7 +136,7 @@ class Brand:
     voice_mode: str = "brand"
     enabled: bool = True             # med i enabled_brands()/nattkjøringen
     profile_dir: Path | None = None
-    linkedin_org_urn: str = ""       # merkets firmaside ([linkedin].org_urn); "" -> global env
+    linkedin_org_urn: str = ""       # merkets firmaside; tom verdi stopper firmapublisering
     linkedin_handle: str = ""        # @handle som TAGGER firmasida ([linkedin].handle)
     # Kanal for publisert-varselet ([slack].channel); "" -> BRANDPOST_SLACK_CHANNEL.
     # Tom i dag med vilje: firmamerkene deler én kanal. Feltet finnes for at det
@@ -168,6 +188,76 @@ def _read_md(base: Path, name: str) -> str:
     return ""
 
 
+def _inside(base: Path, candidate: Path, *, what: str) -> Path:
+    """Resolve en profilsti og nekt absolutt sti/symlink/``..`` ut av merket."""
+    root = base.resolve()
+    resolved = candidate.resolve()
+    if resolved != root and root not in resolved.parents:
+        raise ValueError(f"{what} peker utenfor merkets mappe: {candidate}")
+    return resolved
+
+
+def _brand_file(base: Path, raw: str, *, what: str,
+                suffixes: tuple[str, ...] = ()) -> Path:
+    rel = Path((raw or "").strip())
+    if not raw or rel.is_absolute():
+        raise ValueError(f"{what} må være en relativ sti i merkets mappe")
+    out = _inside(base, base / rel, what=what)
+    if suffixes and out.suffix.lower() not in suffixes:
+        raise ValueError(f"{what} har ikke støttet filtype: {out.suffix}")
+    if not out.is_file():
+        raise ValueError(f"{what} finnes ikke: {out}")
+    return out
+
+
+def _load_media_assets(base: Path, media: dict) -> tuple[MediaAsset, ...]:
+    raw_library = str(media.get("library") or "").strip()
+    default = base / "media" / "library.toml"
+    if not raw_library and not default.is_file():
+        return ()
+    library = (_brand_file(base, raw_library, what="media.library",
+                           suffixes=(".toml",)) if raw_library
+               else _inside(base, default, what="media.library"))
+    data = tomllib.loads(library.read_text(encoding="utf-8"))
+    rows = data.get("asset") or []
+    if not isinstance(rows, list):
+        raise ValueError(f"{library}: forventet [[asset]]")
+
+    seen: set[str] = set()
+    out: list[MediaAsset] = []
+    for i, row in enumerate(rows, 1):
+        if not isinstance(row, dict):
+            raise ValueError(f"{library}: asset {i} må være en tabell")
+        asset_id = str(row.get("id") or "").strip()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", asset_id):
+            raise ValueError(f"{library}: ugyldig asset-id {asset_id!r}")
+        if asset_id in seen:
+            raise ValueError(f"{library}: duplikat asset-id {asset_id!r}")
+        seen.add(asset_id)
+        raw_file = str(row.get("file") or "").strip()
+        rel = Path(raw_file)
+        if not raw_file or rel.is_absolute():
+            raise ValueError(f"{library}: asset {asset_id!r} trenger relativ fil")
+        file = _inside(base, library.parent / rel, what=f"asset {asset_id!r}")
+        if file.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            raise ValueError(f"{library}: ustøttet bildeformat for {asset_id!r}")
+        if not file.is_file():
+            raise ValueError(f"{library}: bildefila finnes ikke for {asset_id!r}: {file}")
+        pillars = row.get("pillars") or []
+        if not isinstance(pillars, list) or not all(isinstance(p, str) for p in pillars):
+            raise ValueError(f"{library}: pillars for {asset_id!r} må være en liste")
+        out.append(MediaAsset(
+            id=asset_id,
+            file_path=file,
+            description=str(row.get("description") or "").strip(),
+            pillars=tuple(p.strip() for p in pillars if p.strip()),
+            alt_text=str(row.get("alt_text") or "").strip(),
+            # Manglende godkjenning er et nei. Bare true kan velges/rendres.
+            approved=row.get("approved") is True,
+        ))
+    return tuple(out)
+
+
 def _load_profile(key: str) -> Brand:
     d = brand_dir(key)
     if d is None:
@@ -186,10 +276,24 @@ def _load_profile(key: str) -> Brand:
     def _mp(rel: str | None) -> Path | None:
         if not rel:
             return None
-        p = d / rel
+        try:
+            p = _inside(d, d / rel, what="mediafil")
+        except ValueError:
+            raise
         return p if p.exists() else None
 
-    refs = tuple(p for r in (media.get("refs") or []) if (p := d / r).exists())
+    def _font(raw: object, default: str) -> str:
+        name = str(raw or default).strip()
+        # Bare merke-lokale stier trenger oppløsning her. Rene filnavn går via
+        # den delte, OFL-lisensierte fontkatalogen/systemfontene som tidligere.
+        if len(Path(name).parts) == 1:
+            return name
+        return str(_brand_file(d, name, what="font",
+                               suffixes=(".ttf", ".otf")))
+
+    refs = tuple(p for r in (media.get("refs") or [])
+                 if (p := _mp(str(r))) is not None)
+    media_assets = _load_media_assets(d, media)
     pillars = tuple(
         Pillar(id=str(p["id"]), label=str(p.get("label", p["id"])), desc=str(p.get("desc", "")))
         for p in (data.get("pillar") or []) if p.get("id")
@@ -203,11 +307,12 @@ def _load_profile(key: str) -> Brand:
         name=str(data["name"]),
         handle=str(data.get("handle", key)),
         palette=pal,
-        display_font=str(fonts.get("display", "Fraunces.ttf")),
-        body_font=str(fonts.get("body", "Inter.ttf")),
+        display_font=_font(fonts.get("display"), "Fraunces.ttf"),
+        body_font=_font(fonts.get("body"), "Inter.ttf"),
         logo_path=_mp(media.get("logo")),
         tilda_path=_mp(media.get("tilda")),
         refs=refs,
+        media_assets=media_assets,
         wordmark=str(data.get("wordmark", "")),
         enabled=bool(data.get("enabled", True)),
         profile_dir=d,
@@ -271,6 +376,19 @@ def pillar_ids(brand: Brand) -> list[str]:
     return [p.id for p in brand.pillars]
 
 
+def media_asset(brand: Brand, asset_id: str) -> MediaAsset:
+    """Finn en godkjent id KUN i dette merket; ukjent/avslått er en hard feil."""
+    wanted = (asset_id or "").strip()
+    for asset in brand.media_assets:
+        if asset.id == wanted and asset.approved:
+            return asset
+    raise ValueError(f"media-id {wanted!r} er ikke godkjent for merket {brand.key!r}")
+
+
+def approved_media_assets(brand: Brand) -> tuple[MediaAsset, ...]:
+    return tuple(a for a in brand.media_assets if a.approved)
+
+
 # ───────────────────────────────────────────────────────────
 # Stemme + fonter (best-effort, med innbakt fallback)
 # ───────────────────────────────────────────────────────────
@@ -289,6 +407,21 @@ def voice_guide(brand: Brand, max_chars: int = 6000) -> str:
 
 def font_path(name: str) -> Path | None:
     """Løs en font: assets/fonts/ først, så vanlige system-plasseringer. None om ingen."""
+    raw = Path(name)
+    if raw.is_absolute():
+        try:
+            resolved = raw.resolve()
+            allowed = any(
+                resolved != base.resolve() and base.resolve() in resolved.parents
+                for base in brand_dirs() if base.exists()
+            )
+        except OSError:
+            return None
+        return resolved if allowed and resolved.is_file() and resolved.suffix.lower() in (".ttf", ".otf") else None
+    # En relativ sti skal ha blitt løst og sikkerhetsvalidert av _load_profile.
+    # Å slå opp ``../`` her ville åpnet en ny traversal-vei for direkte kall.
+    if len(raw.parts) != 1:
+        return None
     cand = FONTS_DIR / name
     if cand.exists():
         return cand

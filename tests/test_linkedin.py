@@ -33,6 +33,7 @@ class FakeSession:
     def __init__(self, *, fail_initialize_once=False):
         self.calls = []
         self.tokens_used = []
+        self.upload_headers = []
         self.fail_initialize_once = fail_initialize_once
         self._init_calls = 0
 
@@ -55,6 +56,7 @@ class FakeSession:
 
     def put(self, url, data=None, headers=None, timeout=None):
         self.calls.append(("PUT", url))
+        self.upload_headers.append(headers or {})
         return FakeResp(200)
 
 
@@ -86,6 +88,14 @@ def test_publish_image_post_happy(tmp_path):
     kinds = [u for _, u in sess.calls]
     assert any("rest/images" in u for u in kinds)
     assert any("rest/posts" in u for u in kinds)
+
+
+def test_publish_jpeg_sender_riktig_mime(tmp_path):
+    img = tmp_path / "x.jpg"
+    img.write_bytes(b"jpeg")
+    sess = FakeSession()
+    linkedin.publish_image_post(str(img), "hei", cfg=_cfg(), session=sess)
+    assert sess.upload_headers == [{"Content-Type": "image/jpeg"}]
 
 
 def test_publish_refreshes_on_401(tmp_path):
@@ -132,6 +142,23 @@ def test_publish_draft_missing_image(tmp_path):
     draft = {"headline": "X", "format": "motiv", "png_path": str(tmp_path / "nope.png")}
     res = linkedin.publish_draft(draft, cfg=_cfg(enabled=False))
     assert res["posted"] is False and "fant ikke bilde" in res["reason"]
+
+
+def test_publish_draft_med_merke_uten_org_urn_er_fail_closed(tmp_path, monkeypatch):
+    img = tmp_path / "x.png"
+    img.write_bytes(b"PNG")
+
+    class Brand:
+        voice_mode = "brand"
+        linkedin_org_urn = ""
+        linkedin_handle = "akser"
+
+    monkeypatch.setattr("brandpost.brandkit.load_brand", lambda key: Brand())
+    res = linkedin.publish_draft(
+        {"brand": "akser", "headline": "H", "png_path": str(img)},
+        cfg=_cfg(org_urn="urn:li:organization:999", enabled=False))
+    assert res["posted"] is False and "mangler gyldig" in res["reason"]
+    assert "preview" not in res
 
 
 def test_select_draft_and_mark_published(tmp_path):

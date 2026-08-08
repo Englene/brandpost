@@ -202,38 +202,67 @@ def test_uten_env_er_alt_som_for(monkeypatch):
 
 # ── .env når pakken er installert et annet sted ────────────
 
-def test_env_letes_i_arbeidskatalogen_forst(tmp_path, monkeypatch):
-    """Pip-installert brandpost skal lese DIN .env, ikke pakkens.
-
-    Med bare pakkestien ble oppsettet ditt aldri lest, og feilen dukket opp som
-    «ukjent merke» i stedet for «fant ikke .env»: to ledd unna årsaken.
-    """
+def test_env_maa_velges_eksplisitt_og_har_ingen_fallback(tmp_path, monkeypatch):
+    """Motorrepoets .env må aldri fylle et annet oppsett."""
     from brandpost import paths
     monkeypatch.chdir(tmp_path)
-    filer = paths.env_files()
-    assert filer[0] == tmp_path / ".env"
-    assert paths.REPO_ROOT / ".env" in filer
+    monkeypatch.delenv("BRANDPOST_ENV_FILE", raising=False)
+    assert paths.env_files() == []
+    valgt = tmp_path / "nadia.env"
+    monkeypatch.setenv("BRANDPOST_ENV_FILE", str(valgt))
+    assert paths.env_files() == [valgt]
 
 
 def test_env_lastes_fra_arbeidskatalogen(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("BRANDPOST_TESTNOKKEL=fra-cwd\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("BRANDPOST_ENV_FILE", str(tmp_path / ".env"))
     monkeypatch.delenv("BRANDPOST_TESTNOKKEL", raising=False)
     from brandpost import paths
     lastet = paths.load_env()
     assert (tmp_path / ".env") in lastet
     assert os.environ.get("BRANDPOST_TESTNOKKEL") == "fra-cwd"
+    assert (tmp_path / ".env").stat().st_mode & 0o777 == 0o600
 
 
 def test_miljoet_vinner_over_env_fila(tmp_path, monkeypatch):
     """En plist eller en eksplisitt eksport skal slå .env, ellers kan du ikke
     overstyre oppsettet for én kjøring."""
     (tmp_path / ".env").write_text("BRANDPOST_TESTNOKKEL=fra-fil\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("BRANDPOST_ENV_FILE", str(tmp_path / ".env"))
     monkeypatch.setenv("BRANDPOST_TESTNOKKEL", "fra-miljoet")
     from brandpost import paths
     paths.load_env()
     assert os.environ["BRANDPOST_TESTNOKKEL"] == "fra-miljoet"
+
+
+def test_env_filer_kryssforurenser_ikke(tmp_path, monkeypatch):
+    from brandpost import paths
+    a = tmp_path / "a.env"
+    b = tmp_path / "b.env"
+    a.write_text("BARE_A=hemmelig\nDELT=fra-a\n", encoding="utf-8")
+    b.write_text("DELT=fra-b\n", encoding="utf-8")
+    monkeypatch.delenv("BARE_A", raising=False)
+    monkeypatch.delenv("DELT", raising=False)
+    monkeypatch.setenv("BRANDPOST_ENV_FILE", str(a))
+    paths.load_env()
+    assert os.environ["BARE_A"] == "hemmelig"
+    monkeypatch.setenv("BRANDPOST_ENV_FILE", str(b))
+    paths.load_env()
+    assert "BARE_A" not in os.environ
+    assert os.environ["DELT"] == "fra-b"
+
+
+def test_state_dir_eier_maskintilstanden(tmp_path, monkeypatch):
+    from datetime import datetime
+    from brandpost import paths
+    workspace = tmp_path / "workspace"
+    state = tmp_path / "state"
+    monkeypatch.setenv("BRANDPOST_STATE_DIR", str(state))
+    assert paths.state_dir_for_workspace(workspace) == state
+    store.record(workspace, [{"brand": "demo", "headline": "H"}],
+                 when=datetime(2026, 8, 8, 10, 0))
+    assert (state / "content-state.json").is_file()
+    assert not (workspace / "socials" / "state.json").exists()
 
 
 # ── CLI-en som en scheduler ser den ────────────────────────

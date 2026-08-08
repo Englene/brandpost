@@ -18,6 +18,7 @@ import sys
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).parent.parent
 if str(ROOT) not in sys.path:  # speiler server.py: gjør brandpost importerbar
@@ -35,7 +36,7 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-from fastapi import APIRouter, Form, HTTPException, Request  # noqa: E402
+from fastapi import APIRouter, Depends, Form, HTTPException, Request  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
 
@@ -49,7 +50,29 @@ from brandpost import store  # noqa: E402
 from brandpost.context import _engagement_summary, _latest_pulse  # noqa: E402
 
 WEB_DIR = Path(__file__).parent
-router = APIRouter(prefix="/some")
+
+
+def _origin(value: str) -> tuple[str, str]:
+    parsed = urlsplit(value)
+    return parsed.scheme.lower(), parsed.netloc.lower()
+
+
+async def _same_origin_mutation(request: Request) -> None:
+    """Nekt alle POST-er som ikke beviselig kommer fra dette dashbordet.
+
+    ``Origin`` er nettleserens CSRF-signal. Den kreves også når klienten ikke er
+    en nettleser; eksplisitte integrasjoner kan enkelt sende sin lokale origin,
+    mens et ondsinnet nettsted aldri kan forfalske headeren fra en nettleser.
+    """
+    if request.method != "POST":
+        return
+    supplied = (request.headers.get("origin") or "").strip()
+    expected = _origin(str(request.base_url))
+    if not supplied or _origin(supplied) != expected:
+        raise HTTPException(status_code=403, detail="POST krever samme Origin som dashbordet")
+
+
+router = APIRouter(prefix="/some", dependencies=[Depends(_same_origin_mutation)])
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
 _NO_MONTHS = ("januar", "februar", "mars", "april", "mai", "juni", "juli",
@@ -499,6 +522,8 @@ def api_regen_image(request: Request, day: str, nr: int, note: str = Form("")):
         result = rendermod.render_post(spec, brand=brand)
         Path(draft["png_path"]).write_bytes(result["png"])
         draft["how"] = result.get("how", draft.get("how", ""))
+        draft["alt_text"] = (result.get("alt_text") or draft.get("alt_text")
+                             or draft.get("headline", ""))
         draft["spec"] = spec          # rettelsene skal overleve til neste forsøk
         store.update_draft_fields(mpath, manifest, idx, {})  # persist how + mtime-bust
         hale = f" Rettelser med: {len(retter)}." if retter else ""
@@ -574,7 +599,7 @@ def api_publish(request: Request, day: str, nr: int):
             request, day, draft,
             note=f"Publisert på firmasida. E-post: {res.get('epost', '?')} · "
                  f"Slack: {res.get('slack', '?')}.")
-    if res.get("dry_run"):
+    if res.get("dry_run") and "preview" in res:
         return _card_response(request, day, draft,
                               note="Dry-run (LINKEDIN_ENABLED=0): ingenting postet.")
     return _err(f"Ikke publisert: {res.get('reason', 'ukjent feil')}")
@@ -632,13 +657,13 @@ def api_purge_preview(request: Request, brand: str | None = None):
 
 
 @router.post("/api/purge", response_class=HTMLResponse)
-def api_purge(request: Request, brand: str | None = None, antall: int = Form(-1)):
+def api_purge(request: Request, brand: str | None = None, antall: int = Form(...)):
     """Slett alt upublisert (for valgt selskap). `antall` er tallet eieren SÅ i lista;
     stemmer det ikke lenger, har noe endret seg siden han leste den, og vi avbryter
     heller enn å slette noe han aldri fikk se."""
     merke = merke_valg(brand)
     rader = _slettbare(merke)
-    if antall >= 0 and antall != len(rader):
+    if antall != len(rader):
         return _err(f"Lista har endret seg ({antall} → {len(rader)}). "
                     f"Åpne den på nytt og se over før du sletter.")
     v = vault_path()
@@ -669,7 +694,7 @@ def api_generate(request: Request, brand: str | None = None):
     hang dashbordet 22. juli)."""
     merke = merke_valg(brand)
     key = "demo" if merke == ALLE_MERKER else merke
-    logg = Path.home() / ".notater" / "some-generering.log"
+    logg = paths.state_dir() / "logs" / "some-generering.log"
     try:
         logg.parent.mkdir(parents=True, exist_ok=True)
         f = open(logg, "a", encoding="utf-8")     # noqa: SIM115 (eies av subprosessen)
@@ -843,7 +868,7 @@ def _etterfyll_bunke(brand: str) -> bool:
     meetingnotes/looper/DEPLOY.md). Skal du teste påfyllet manuelt, gjør det
     gjennom dashbordet, ikke fra en ssh-økt."""
     merke = brand if brand and brand != ALLE_MERKER else (brandkit.enabled_brands() or ["demo"])[0]
-    laasdir = store.socials_dir(vault_path()) / ".bunke-paafyll"
+    laasdir = paths.state_dir() / "bunke-paafyll"
     laasdir.mkdir(parents=True, exist_ok=True)
 
     # Rydd døde låser først: en krasjet kjøring skal ikke okkupere en plass for
@@ -860,7 +885,7 @@ def _etterfyll_bunke(brand: str) -> bool:
     if aktive >= BUNKE_SAMTIDIGE:
         return False
 
-    logg = Path.home() / ".notater" / "some-bunke.log"
+    logg = paths.state_dir() / "logs" / "some-bunke.log"
     logg.parent.mkdir(parents=True, exist_ok=True)
     with open(logg, "ab") as f:
         f.write(f"\n--- påfyll {datetime.now():%F %T} merke={merke} "
@@ -883,7 +908,7 @@ def _paafyll_kjorer() -> bool:
 
     Brukes til å skille «bunken er ferdig» fra «bunken venter på flere». De to
     ser like ut for eieren, men betyr helt ulike ting."""
-    laasdir = store.socials_dir(vault_path()) / ".bunke-paafyll"
+    laasdir = paths.state_dir() / "bunke-paafyll"
     if not laasdir.is_dir():
         return False
     for f in laasdir.glob("*.lock"):
@@ -1012,22 +1037,28 @@ def tavle(request: Request, brand: str | None = None):
 def bunke(request: Request, brand: str | None = None):
     ctx = _bunke_ctx(vault_path(), brand)
     ctx["merker"] = merker_ctx(ctx["brand"])
-    # Også ved åpning, ikke bare ved swipe: kommer du tilbake til en bunke som
-    # alt er tom, skal påfyllet være i gang før du rekker å lure på hvorfor det
-    # ikke skjer noe.
-    n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
-    if n:
-        ctx["flash"] = f"Henter {n * BUNKE_PAAFYLL} nye forslag i bakgrunnen."
-    ctx["fyller"] = bool(n) or _paafyll_kjorer()
+    # GET skal være read-only. En fremmed nettside kan navigere nettleseren til
+    # localhost, så et sidebesøk må aldri starte betalte modellkall. Tom bunke
+    # får en eksplisitt POST-knapp, beskyttet av Origin-kontrollen.
+    ctx["fyller"] = _paafyll_kjorer()
     return templates.TemplateResponse(request, "some/bunke.html", ctx)
 
 
 @router.get("/api/bunke/neste", response_class=HTMLResponse)
 def api_bunke_neste(request: Request, brand: str | None = None):
-    """Pollet mens bunken venter på påfyll. Bestiller også selv, i tilfelle den
-    forrige runden rakk å dø uten å levere."""
+    """Read-only polling mens et eksplisitt bestilt påfyll kjører."""
+    ctx = _bunke_ctx(vault_path(), brand)
+    ctx["fyller"] = _paafyll_kjorer()
+    return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
+
+
+@router.post("/api/bunke/fyll", response_class=HTMLResponse)
+def api_bunke_fyll(request: Request, brand: str | None = None):
+    """«Generer nå» for tom bunke; eksplisitt menneskehandling, aldri GET-sideeffekt."""
     ctx = _bunke_ctx(vault_path(), brand)
     n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
+    if n:
+        ctx["flash"] = f"Henter {n * BUNKE_PAAFYLL} nye forslag i bakgrunnen."
     ctx["fyller"] = bool(n) or _paafyll_kjorer()
     return templates.TemplateResponse(request, "some/bunke_kort.html", ctx)
 
@@ -1095,7 +1126,8 @@ def api_bunke_nytt_bilde(request: Request, day: str, nr: int,
         spec = dict(draft.get("spec") or {})
         spec.setdefault("headline", draft.get("headline", ""))
         result = rendermod.render_post(spec, brand=merke)
-        store.attach_image(mpath, manifest, idx, result["png"])
+        store.attach_image(mpath, manifest, idx, result["png"],
+                           alt_text=result.get("alt_text", ""))
     except Exception as e:  # noqa: BLE001
         return _err(f"Bildet feilet: {e}")
 
@@ -1141,7 +1173,8 @@ def api_bunke_rett(request: Request, day: str, nr: int, note: str = Form(...),
         try:
             merke = brandkit.load_brand(oppdatert.get("brand") or "demo")
             result = rendermod.render_post(dict(oppdatert.get("spec") or {}), brand=merke)
-            store.attach_image(mpath, manifest, idx, result["png"])
+            store.attach_image(mpath, manifest, idx, result["png"],
+                               alt_text=result.get("alt_text", ""))
         except Exception as e:  # noqa: BLE001
             bilde_note = f" Teksten er rettet, men bildet feilet: {e}"
 
@@ -1188,7 +1221,8 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
             spec = dict(draft.get("spec") or {})
             spec.setdefault("headline", draft.get("headline", ""))
             result = rendermod.render_post(spec, brand=merke)
-            store.attach_image(mpath, manifest, idx, result["png"])
+            store.attach_image(mpath, manifest, idx, result["png"],
+                               alt_text=result.get("alt_text", ""))
         except Exception as e:
             # Planleggingen skal ikke ryke fordi bildekallet gjorde det. Utkastet
             # får dato, og bildet kan regenereres fra kortet i kalenderen.

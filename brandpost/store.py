@@ -4,7 +4,7 @@ Utkast havner i `<vault>/_system/socials/<dato>/`:
   post-1.png     rendret bilde
   post-1.md      copy + «hvorfor nå» + metadata (frontmatter)
 
-Dedup-state i `<vault>/_system/socials/state.json` husker de siste vinklene/
+Dedup-state i ``BRANDPOST_STATE_DIR/content-state.json`` husker de siste vinklene/
 formatene (samme idé som Dagsbrevets historikk) så generatoren ikke gjentar seg.
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -36,7 +35,7 @@ def socials_dir(vault: Path | None = None) -> Path:
 
 
 def _state_path(vault: Path) -> Path:
-    return paths.socials_dir(vault) / "state.json"
+    return paths.state_dir_for_workspace(vault) / "content-state.json"
 
 
 def load_state(vault: Path | None = None) -> dict:
@@ -199,6 +198,7 @@ def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes | Non
         "png_path": str(png_path) if png is not None else "",
         "md_path": str(md_path),
         "body": body, "why_now": why,
+        "alt_text": (spec.get("alt_text") or headline).strip(),
         "kilder": [k for k in (spec.get("kilder") or []) if isinstance(k, str)],
         "status": "proposed",  # → "published" når eieren publiserer den (godkjenn-hvert)
         # originalspec (uten brand) så dashbordet kan regenerere bildet etter redigering
@@ -275,7 +275,9 @@ def record(vault: Path | None, drafts: list[dict], *, when: datetime | None = No
         })
     state["posts"] = state["posts"][-STATE_KEEP:]
     state["updated"] = when.isoformat(timespec="seconds")
-    atomic_write_json(_state_path(_vault(vault)), state)
+    state_path = _state_path(_vault(vault))
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(state_path, state)
 
 
 # ── LinkedIn-publisering: manifest-status (godkjenn-hvert) ──────────
@@ -489,7 +491,8 @@ def unjudged_drafts(vault: Path | None = None, brand_key: str = "") -> list[dict
     return ut
 
 
-def attach_image(manifest_path: Path, manifest: dict, idx: int, png: bytes) -> str:
+def attach_image(manifest_path: Path, manifest: dict, idx: int, png: bytes,
+                 *, alt_text: str = "") -> str:
     """Fest et bilde på et tekst-utkast som ble laget uten ett, og returner stien.
 
     Bunken lager forslag uten bilde for ikke å betale for det som forkastes. Får
@@ -504,6 +507,8 @@ def attach_image(manifest_path: Path, manifest: dict, idx: int, png: bytes) -> s
     png_path = day_dir / f"{stem}.png"
     png_path.write_bytes(png)
     d["png_path"] = str(png_path)
+    if alt_text.strip():
+        d["alt_text"] = alt_text.strip()
 
     md_path = Path(d.get("md_path") or "")
     if md_path.name and (day_dir / md_path.name).exists():

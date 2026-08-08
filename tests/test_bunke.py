@@ -285,7 +285,8 @@ def bunke_client(tmp_path, monkeypatch):
          "emne": "skattefunn-frist", "body": "b2", "why_now": "w2",
          "status": "proposed", "format": "motiv", "png_path": "", "spec": {}},
     ]}, ensure_ascii=False), encoding="utf-8")
-    return TestClient(app), tmp_path, d / "manifest.json"
+    return (TestClient(app, headers={"Origin": "http://testserver"}),
+            tmp_path, d / "manifest.json")
 
 
 def test_bunken_viser_forste_kort(bunke_client):
@@ -375,8 +376,7 @@ def test_bildefeil_mister_ikke_planleggingen(bunke_client, monkeypatch):
 
 
 def test_vurderte_utkast_forsvinner_fra_bunken(bunke_client, monkeypatch):
-    """Bunken skal aldri stoppe: er den tom, står det at flere er på vei, ikke at
-    du er ferdig (Oscar 31. juli). De to betyr helt ulike ting."""
+    """Tom bunke krever eksplisitt POST før betalte modellkall starter."""
     client, tmp_path, mpath = bunke_client
     from web import app as somemod
     monkeypatch.setattr(somemod, "_etterfyll_bunke", lambda brand: True)
@@ -385,8 +385,10 @@ def test_vurderte_utkast_forsvinner_fra_bunken(bunke_client, monkeypatch):
     client.post("/some/api/bunke/2026-07-31/2/pass")
     r = client.get("/some/bunke")
     assert store.unjudged_drafts(tmp_path) == []
-    assert "Lager flere forslag" in r.text
-    assert "Bunken er tom" not in r.text
+    assert "Generer nye nå" in r.text
+    startet = client.post("/some/api/bunke/fyll")
+    assert "Lager flere forslag" in startet.text
+    assert "Bunken er tom" not in startet.text
 
 
 def test_kalenderen_har_lenke_til_bunken(bunke_client):
@@ -453,7 +455,7 @@ def test_doed_laas_foreldes(bunke_client, monkeypatch):
     monkeypatch.setattr(somemod.subprocess, "Popen", lambda cmd, **kw: _P())
     monkeypatch.setattr(somemod, "BUNKE_SAMTIDIGE", 1)
 
-    laasdir = store.socials_dir(tmp_path) / ".bunke-paafyll"
+    laasdir = tmp_path / ".brandpost-state" / "bunke-paafyll"
     laasdir.mkdir(parents=True, exist_ok=True)
     doed = laasdir / "999.lock"
     doed.write_text("")
@@ -641,7 +643,7 @@ def test_laasen_slippes_ogsaa_naar_genereringen_kaster(tmp_path, monkeypatch):
     from brandpost import cli
     monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
     import os as _os
-    laasdir = store.socials_dir(tmp_path) / ".bunke-paafyll"
+    laasdir = tmp_path / ".brandpost-state" / "bunke-paafyll"
     laasdir.mkdir(parents=True, exist_ok=True)
     laas = laasdir / f"{_os.getpid()}.lock"
     laas.write_text("")

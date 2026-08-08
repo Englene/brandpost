@@ -19,7 +19,7 @@ entydig fordi tråden sier hvilke to. Det er også hvordan folk faktisk svarer.
 
 IDEMPOTENS er hele risikoen her. Et svar som leses to ganger må ikke publisere to
 ganger, og `publiser_ett` sjekker ikke selv. Derfor lagres hver behandlede
-svar-`ts` i `socials/slack-godkjent.json`, og et innlegg som alt har status
+svar-`ts` i ``BRANDPOST_STATE_DIR/slack-godkjent.json``, og et innlegg som alt har status
 `published` hoppes over uansett.
 """
 
@@ -44,7 +44,7 @@ _TALL = re.compile(r"\d+")
 
 
 def _ledger_sti(vault: Path | None = None) -> Path:
-    return Path(store.socials_dir(paths.workspace(vault))) / LEDGER
+    return paths.state_dir_for_workspace(vault) / LEDGER
 
 
 def les_ledger(vault: Path | None = None) -> dict:

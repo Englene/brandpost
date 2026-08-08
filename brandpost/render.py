@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass
 from io import BytesIO
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from . import brandkit
 from .brandkit import Brand
@@ -614,6 +614,38 @@ def with_corrections(motif: str, corrections) -> str:
             f"annerledes nå:\n{linjer}")
 
 
+def render_media_asset(asset: brandkit.MediaAsset, brand: Brand,
+                       size: tuple[int, int] = SIZE_PORTRAIT) -> bytes:
+    """Plasser et ekte, godkjent bilde på merkeflate uten beskjæring eller KI.
+
+    EXIF-orientering normaliseres før ``contain``. Kilden skaleres bare ned/opp
+    proporsjonalt og får en egen, rolig bunnsone til ordmerket; ingen piksel i
+    originalmotivet kuttes bort.
+    """
+    try:
+        with Image.open(asset.file) as opened:
+            source = ImageOps.exif_transpose(opened).convert("RGBA")
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"kunne ikke dekode media-id {asset.id!r}: {exc}") from exc
+
+    w, h = size
+    canvas = Image.new("RGBA", size, (*_hex(brand.palette.bg), 255))
+    margin = max(36, int(w * 0.06))
+    top = max(42, int(h * 0.055))
+    brand_zone = max(150, int(h * 0.14))
+    box = (w - 2 * margin, h - top - brand_zone - margin)
+    fitted = ImageOps.contain(source, box, Image.Resampling.LANCZOS)
+    x = (w - fitted.width) // 2
+    y = top + max(0, (box[1] - fitted.height) // 2)
+    canvas.alpha_composite(fitted, (x, y))
+
+    # Et lite ordmerke gjør flata gjenkjennelig uten å skrive over analysebildet.
+    mark_h = int(w * 0.048)
+    _draw_wordmark(canvas, brand, margin, h - brand_zone + int(brand_zone * 0.28),
+                   mark_h, text_rgb=_hex(brand.palette.headline))
+    return _to_png(canvas)
+
+
 def engine_content(spec: dict, brand: Brand, size: tuple[int, int],
                    *, retries: int = 3) -> Image.Image | None:
     """Bildekall: motoren lager KUN innholdet, på merkets bakgrunn, uten tekst og med
@@ -690,6 +722,19 @@ def render_post(spec: dict, *, brand: Brand | None = None,
     ellers typografi-kort (tekst-mal). seq roterer mal-temaet ved fallback."""
     b = brand or brandkit.load_brand(spec.get("brand", "demo"))
     size = size or resolve_size(spec)
+    asset_id = (spec.get("media_id") or spec.get("bevis_id") or "").strip()
+    if asset_id:
+        asset = brandkit.media_asset(b, asset_id)
+        pillar = (spec.get("pillar") or "").strip()
+        if pillar and asset.pillars and pillar not in asset.pillars:
+            raise ValueError(
+                f"media-id {asset_id!r} er ikke godkjent for pilar {pillar!r} i {b.key!r}")
+        spec["alt_text"] = asset.alt_text
+        # Bibliotek-kontrakten er alltid LinkedIn-portrett, uansett hva modellen
+        # måtte foreslå i orientation.
+        return {"png": render_media_asset(asset, b, SIZE_PORTRAIT),
+                "how": f"media:{asset.id}", "format": "eget-bilde",
+                "theme": "media", "alt_text": asset.alt_text}
     fmt = (spec.get("format") or ("motiv" if spec.get("motif") else "typografi-kort")).strip()
     if fmt in ("motiv", "redaksjonelt"):
         png, how = render_motiv(spec, b, size, seq=seq)

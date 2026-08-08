@@ -296,7 +296,7 @@ def publish_due(vault: Path, *, now: datetime | None = None,
             tall["feilet"] += 1
             print(f"  ⚠️  {key}: {type(e).__name__}: {e}")
             continue
-        if res.get("dry_run") and not res.get("posted"):
+        if res.get("dry_run") and not res.get("posted") and "preview" in res:
             # Uventet tørrkjøring er en STILLE feil: innlegget skulle ut, og alt ser
             # vellykket ut mens ingenting skjer. Telles som feil når det ikke var bedt
             # om, så jobben avslutter rødt i stedet for å «lykkes» hvert kvarter.

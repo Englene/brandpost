@@ -25,8 +25,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from . import (bildebank, bildevalg, brandkit, carousel as carouselmod,
                context as ctxmod, email as emailmod, model, paths,
                plan as planmod, publisher as pubmod, render as rendermod, store)
@@ -237,15 +235,9 @@ def _render_posts(vault: Path, brand, posts: list[dict],
                             print(f"  📝 {ds} ren tekst: {meta['headline'][:44]}")
                             continue
                     else:
-                        # Egne bilder går foran generert grafikk. Banken håndhever
-                        # godkjenningen selv, så en ukjent eller avvist id faller
-                        # stille tilbake til vanlig rendering framfor å feile.
-                        egen = bildebank.finn(spec.get("bevis_id", ""), vault)
-                        if egen is not None:
-                            result = {"png": egen.read_bytes(), "format": "eget-bilde",
-                                      "how": f"bevis:{egen.name}"}
-                        else:
-                            result = rendermod.render_post(spec, brand=brand, seq=bilde_seq)
+                        # Firmabilder kommer bare fra merkets versjonerte bibliotek.
+                        # render_post avviser ukjent, avslått og annet merkes id.
+                        result = rendermod.render_post(spec, brand=brand, seq=bilde_seq)
                 except Exception as e:  # noqa: BLE001
                     # Ett feilet bildekall skal ikke rive med seg de andre ni.
                     # Utkastet lagres uten bilde og kan regenereres fra kortet;
@@ -430,7 +422,7 @@ def cmd_publish(args) -> int:
         print(f"  🔗 publisert → {res['url']}")
         print(f"     e-post: {res.get('epost', '?')} · slack: {res.get('slack', '?')}")
         return 0
-    if res.get("dry_run"):
+    if res.get("dry_run") and "preview" in res:
         who = res.get("preview", {}).get("author", "?")
         if som_json:
             return _publish_json({"ok": True, "posted": False, "dry_run": True,
@@ -491,8 +483,8 @@ _POST_SCHEMA = {
                     "slides": {"type": "array", "items": _SLIDE_SCHEMA},
                     "slot_date": {"type": "string"},
                     "kilder": {"type": "array", "items": {"type": "string"}},
-                    # Id fra bildebanken: bruk et EKTE skjermbilde i stedet for å
-                    # tegne et motiv. Tom eller ukjent id gir vanlig rendering.
+                    # Id fra bildebanken/merkets media/library.toml. For firmaer
+                    # snevres enum-en inn til dette merkets godkjente id-er.
                     "bevis_id": {"type": "string"},
                     # Bildekjeden for PERSONLIGE innlegg (bildevalg.py). Feltene
                     # ignoreres for merkevarer, som fortsatt tegner motiv.
@@ -904,10 +896,12 @@ def _post_schema(brand) -> dict:
     «ingen» er med i enum-en nettopp for at kravet ikke skal presse fram et
     bilde som ikke dokumenterer noe.
     """
-    if brand.voice_mode != "person":
-        return _POST_SCHEMA
     s = copy.deepcopy(_POST_SCHEMA)
     post = s["properties"]["posts"]["items"]
+    if brand.voice_mode != "person":
+        ids = [a.id for a in brandkit.approved_media_assets(brand)]
+        post["properties"]["bevis_id"]["enum"] = ["", *ids]
+        return s
     post["required"] = sorted(set(post.get("required", [])) | {"bildetype"})
     # `utdrag` er en RENDER av tekst, ikke et bilde av noe. Å fjerne den fra
     # fallback-kjeden holdt ikke: modellen valgte den eksplisitt i to av fem
@@ -915,6 +909,21 @@ def _post_schema(brand) -> dict:
     # forkastet. Ut av valgmulighetene helt for personlige merker.
     post["properties"]["bildetype"]["enum"] = ["bevis", "nettkilde", "figur", "ingen"]
     return s
+
+
+def _media_block(brand) -> str:
+    """Kun id-er og redaksjonell metadata, aldri filstier, til modellen."""
+    assets = brandkit.approved_media_assets(brand)
+    if not assets:
+        return ""
+    katalog = [{"id": a.id, "description": a.description,
+                "pillars": list(a.pillars), "alt_text": a.alt_text}
+               for a in assets]
+    return ("\n\nGODKJENT BILDEBIBLIOTEK FOR DETTE MERKET:\n"
+            + json.dumps(katalog, ensure_ascii=False)
+            + "\nBruk et ekte bilde bare når det dokumenterer poenget. Sett da `bevis_id` "
+              "til nøyaktig en id fra lista og velg en oppført/relevant pilar. "
+              "Aldri gjett en id. Bildet plasseres uten beskjæring og tegnes aldri på nytt.")
 
 
 def _modus_blokker(brand, n: int, vault=None) -> dict:
@@ -1025,7 +1034,7 @@ def _slipp_bunkelaas(vault) -> None:
     dashbordet plass til en runde for mye. Slippes den ikke i det hele tatt, blir
     plassen okkupert til foreldelsen slår inn, og bunken slutter å fylles."""
     try:
-        (store.socials_dir(vault) / ".bunke-paafyll" / f"{os.getpid()}.lock").unlink(
+        (paths.state_dir_for_workspace(vault) / "bunke-paafyll" / f"{os.getpid()}.lock").unlink(
             missing_ok=True)
     except OSError:
         pass
@@ -1174,6 +1183,7 @@ def _cmd_run(args) -> int:
             # skrivebordet midt i en merkevare-feed er ikke et bevis, det er et
             # brudd. Blokka er uansett tom når banken ikke er fylt.
             + (bildebank.kandidat_blokk(vault) if brand.voice_mode == "person" else "")
+            + (_media_block(brand) if brand.voice_mode != "person" else "")
             + slot_block
             + _variasjon_block(brand)
             + f"\n\nLag {n} utkast nå: unikt motiv per bilde, og en pilar (pillar-id) per utkast.")

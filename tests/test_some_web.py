@@ -22,7 +22,7 @@ from main import app
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
     monkeypatch.delenv("LINKEDIN_ENABLED", raising=False)
-    return TestClient(app)
+    return TestClient(app, headers={"Origin": "http://testserver"})
 
 
 def _frem(dager: int = 7) -> str:
@@ -53,6 +53,15 @@ def test_home_renders(client):
     r = client.get("/some")
     assert r.status_code == 200
     assert "SoMe-kommandosenter" in r.text
+
+
+def test_alle_post_krever_samme_origin(client):
+    cross = client.post("/some/api/draft/2099-01-01/1/delete",
+                        headers={"Origin": "https://ond.example"})
+    missing = client.post("/some/api/draft/2099-01-01/1/delete",
+                          headers={"Origin": ""})
+    assert cross.status_code == 403
+    assert missing.status_code == 403
 
 
 def test_calendar_shows_scheduled_draft_and_slot(client, tmp_path):
@@ -113,10 +122,10 @@ def test_mark_published_sets_status(client, tmp_path):
     assert d["status"] == "published" and d["linkedin_url"] == url
 
 
-def test_publish_via_api_is_dry_run_without_enabled(client, tmp_path):
+def test_publish_via_api_stoppes_uten_merkets_org_urn(client, tmp_path):
     day, nr = _make_manifest(tmp_path)
     r = client.post(f"/some/api/draft/{day}/{nr}/publish")
-    assert r.status_code == 200 and "Dry-run" in r.text
+    assert r.status_code == 200 and "mangler gyldig" in r.text
     manifest = json.loads((tmp_path / "socials" / day / "manifest.json")
                           .read_text(encoding="utf-8"))
     d = next(x for x in manifest["drafts"] if x.get("nr") == nr)
@@ -321,6 +330,15 @@ def test_rydding_avbryter_hvis_lista_har_endret_seg(client, tmp_path):
     manifest = json.loads((tmp_path / "socials" / day / "manifest.json")
                           .read_text(encoding="utf-8"))
     assert len(manifest["drafts"]) == 1, "ingenting skal være slettet"
+
+
+def test_rydding_uten_antall_avvises_uten_sletting(client, tmp_path):
+    day, _ = _make_manifest(tmp_path)
+    r = client.post("/some/api/purge")
+    assert r.status_code == 422
+    manifest = json.loads((tmp_path / "socials" / day / "manifest.json")
+                          .read_text(encoding="utf-8"))
+    assert len(manifest["drafts"]) == 1
 
 
 def test_rydding_sletter_alt_upublisert(client, tmp_path):

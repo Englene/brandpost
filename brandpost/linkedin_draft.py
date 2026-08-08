@@ -34,7 +34,6 @@ from . import brandkit
 from . import paths
 from . import store
 
-DEFAULT_PROFILE = Path.home() / ".notater" / "linkedin-profile"
 LEDGER_NAME = "utkast-ledger.json"
 
 # Tilgjengelighetsnavn, norsk og engelsk. LinkedIn A/B-er tekster; hold rause.
@@ -49,7 +48,8 @@ RE_EDITOR = re.compile(r"tekstredigering|text editor|hva vil du snakke om|what d
 
 
 def profile_dir() -> Path:
-    return Path(os.environ.get("BRANDPOST_BROWSER_PROFILE") or DEFAULT_PROFILE).expanduser()
+    raw = (os.environ.get("BRANDPOST_BROWSER_PROFILE") or "").strip()
+    return Path(raw).expanduser() if raw else paths.state_dir() / "linkedin-profile"
 
 
 def page_url() -> str:

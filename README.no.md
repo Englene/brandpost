@@ -40,8 +40,15 @@ avtalen. Se [nettleser mot API](#nettleser-mot-api) under.
 git clone https://github.com/Englene/brandpost && cd brandpost
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # fyll inn minst ANTHROPIC_API_KEY + én bildenøkkel
+cp .env.example .env
+chmod 600 .env
+export BRANDPOST_ENV_FILE="$PWD/.env"          # motoren leser aldri andre .env-filer
+export BRANDPOST_STATE_DIR="$PWD/.brandpost-state"
 ```
+
+Åpne `.env` lokalt i en teksteditor og fyll inn det oppsettet du trenger. Ikke
+send API-nøkler, tokens eller filinnholdet til en assistent/chat. Prosessmiljøet
+vinner over fila, og produksjonsjobben må ha de to `BRANDPOST_*`-pekerne over.
 
 Har du Claude Code-abonnement kan du hoppe over `ANTHROPIC_API_KEY` og sette
 `BRANDPOST_MODEL_BACKEND=cli` i stedet. Da koster tekstgenereringen ingenting
@@ -132,7 +139,8 @@ forutsetter et registrert selskap med en verifisert LinkedIn-side.
 2. Be om produktet **Community Management API**. Regn med dager til uker, og at du
    må beskrive hva appen skal gjøre.
 3. Legg til `http://localhost:8765/callback` som redirect-URL.
-4. Sett `LINKEDIN_CLIENT_ID` og `LINKEDIN_CLIENT_SECRET` i `.env`.
+4. Sett `LINKEDIN_CLIENT_ID` og `LINKEDIN_CLIENT_SECRET` direkte i den lokale
+   miljøfila som `BRANDPOST_ENV_FILE` peker på (aldri i chat).
 5. Kjør engangs-innloggingen:
    ```bash
    python -m brandpost.linkedin_auth

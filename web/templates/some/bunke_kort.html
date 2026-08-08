@@ -29,12 +29,12 @@
         <div class="text-4xl mb-3">🎉</div>
         <div class="text-lg font-semibold">Bunken er tom</div>
         <div class="text-sm text-paper/50 mt-2">
-          Alle forslag er vurdert, og påfyllet kom ikke i gang. Last siden på nytt,
-          så bestilles det.
+          Alle forslag er vurdert. Generering starter bare når du ber om det.
         </div>
-        <a href="/some/bunke?brand={{ brand }}"
-           class="inline-block mt-4 text-sm text-paper/70 hover:text-paper underline">
-          Hent flere</a>
+        <button hx-post="/some/api/bunke/fyll?brand={{ brand }}"
+                hx-target="#bunke-kort" hx-swap="outerHTML"
+                class="mt-4 text-sm text-paper/70 hover:text-paper underline">
+          <span class="htmx-indicator">⏳ </span>Generer nye nå</button>
       </div>
     {% endif %}
   {% else %}

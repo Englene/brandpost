@@ -102,7 +102,7 @@ def test_publish_draft_karusell_dry_run_writes_metadata(tmp_path, monkeypatch):
     cover.write_bytes(b"png")
     draft = {"type": "karusell", "tittel": "Fem grep", "headline": "Fem grep",
              "body": "tekst", "pdf_path": str(pdf), "cover_path": str(cover)}
-    res = linkedin.publish_draft(draft)
+    res = linkedin.publish_draft(draft, cfg=_cfg(enabled=False))
     assert res["dry_run"] is True and res["posted"] is False
     assert res["preview"]["document"] == str(pdf)
     assert res["preview"]["title"] == "Fem grep"
@@ -160,17 +160,18 @@ def test_publish_draft_uses_brand_org_urn(tmp_path, monkeypatch):
     assert res["preview"]["author"] == "urn:li:organization:555"
 
 
-def test_publish_draft_falls_back_to_global_urn_without_brand_urn(tmp_path, monkeypatch):
+def test_publish_draft_arver_aldri_global_urn_without_brand_urn(tmp_path, monkeypatch):
     png = tmp_path / "p.png"
     png.write_bytes(b"png")
 
     class _B:
-        linkedin_org_urn = ""  # merket har ikke egen side -> global env-URN
+        linkedin_org_urn = ""
 
     monkeypatch.setattr("brandpost.brandkit.load_brand", lambda key: _B())
     draft = {"headline": "H", "brand": "demo", "png_path": str(png), "body": "b"}
     res = linkedin.publish_draft(draft, cfg=_cfg(enabled=False))
-    assert res["preview"]["author"] == "urn:li:organization:1"
+    assert res["posted"] is False and "mangler gyldig" in res["reason"]
+    assert "preview" not in res
 
 
 def test_tom_org_urn_er_en_trygg_standard():

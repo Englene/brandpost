@@ -23,7 +23,9 @@ Access-token utløper etter ~60 dager; ved 401 refresher vi automatisk med refre
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
+import re
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -49,7 +51,11 @@ class LinkedInConfig:
     @property
     def ready(self) -> bool:
         """Nok til å faktisk poste (token + hvem vi poster som)."""
-        return bool(self.access_token and self.org_urn)
+        return bool(self.access_token and valid_org_urn(self.org_urn))
+
+
+def valid_org_urn(value: str) -> bool:
+    return bool(re.fullmatch(r"urn:li:organization:\d+", (value or "").strip()))
 
 
 def load_linkedin_config() -> LinkedInConfig:
@@ -158,7 +164,7 @@ def fetch_org_posts(*, cfg: LinkedInConfig | None = None, count: int = 30,
     fra hvilken dagsmappe utkastet lå i. Tom liste ved manglende oppsett eller feil,
     så en kaller aldri må gjette på tomt svar kontra unntak."""
     cfg = _with_brand_org(cfg or load_linkedin_config(), brand_key)
-    if not cfg.access_token or not cfg.org_urn:
+    if not cfg.access_token or not valid_org_urn(cfg.org_urn):
         return []
     sess = session or requests.Session()
 
@@ -182,10 +188,13 @@ def publish_image_post(image_path: str, body: str, *, alt_text: str = "",
     if not cfg.ready:
         raise RuntimeError("LinkedIn ikke konfigurert (mangler LINKEDIN_ACCESS_TOKEN / LINKEDIN_ORG_URN)")
     sess = session or requests.Session()
+    mime = mimetypes.guess_type(image_path)[0]
+    if mime not in ("image/png", "image/jpeg"):
+        raise RuntimeError(f"LinkedIn-bildet må være PNG eller JPEG: {image_path}")
 
     def _do(token: str) -> str:
         upload_url, urn = _initialize_upload(cfg, token, kind="images", session=sess)
-        _upload_binary(upload_url, image_path, mime="image/png", session=sess)
+        _upload_binary(upload_url, image_path, mime=mime, session=sess)
         return _create_post(cfg, token, media={"id": urn, "altText": alt_text or ""},
                             body=body, session=sess)
 
@@ -269,16 +278,17 @@ def _er_personlig(brand_key: str | None) -> bool:
 
 def _with_brand_org(cfg: LinkedInConfig, brand_key: str | None) -> LinkedInConfig:
     """Merkets egen firmaside ([linkedin].org_urn i brands/<key>/profile.toml)
-    vinner over global LINKEDIN_ORG_URN: samme app + token poster til alle sidene
-    du er admin på, siden velges per utkast via merket."""
+    er den ENESTE lovlige avsenderen for et navngitt firmamerke. Global
+    ``LINKEDIN_ORG_URN`` er kun bakoverkompatibilitet for utkast helt uten merke;
+    et manglende profilfelt må aldri arve en annen bedrifts side."""
     if not brand_key:
         return cfg
     try:
         from . import brandkit
-        urn = brandkit.load_brand(brand_key).linkedin_org_urn
+        brand = brandkit.load_brand(brand_key)
     except Exception:
-        return cfg
-    return replace(cfg, org_urn=urn) if urn else cfg
+        return replace(cfg, org_urn="")
+    return replace(cfg, org_urn=brand.linkedin_org_urn)
 
 
 def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
@@ -301,6 +311,11 @@ def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
                           "bruk linkedin_draft (nettleserveien)"}
     cfg = _with_brand_org(cfg or load_linkedin_config(), draft.get("brand"))
     dry = (not cfg.enabled) if dry_run is None else bool(dry_run)
+    if not valid_org_urn(cfg.org_urn):
+        brand_key = (draft.get("brand") or "firmamerket").strip()
+        return {"posted": False, "dry_run": dry,
+                "reason": f"{brand_key}: mangler gyldig [linkedin].org_urn; "
+                          "publisering og dry-run-preview er sperret"}
     # Handlen hentes fra merket, ikke fra utkastet: manifestet bærer ikke handlen,
     # og uten den finner api_commentary aldri taggen sanitizeren skrev.
     _handle = ""
@@ -319,7 +334,7 @@ def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
         if not pdf_path or not Path(pdf_path).exists():
             return {"posted": False, "dry_run": dry, "reason": f"fant ikke PDF: {pdf_path}"}
         title = (draft.get("tittel") or headline or "Karusell").strip()
-        preview = {"author": cfg.org_urn or "(LINKEDIN_ORG_URN mangler)",
+        preview = {"author": cfg.org_urn,
                    "commentary": body, "document": pdf_path, "title": title,
                    "lifecycleState": "PUBLISHED", "visibility": "PUBLIC"}
         if dry:
@@ -332,12 +347,13 @@ def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
     if not image_path or not Path(image_path).exists():
         return {"posted": False, "dry_run": dry, "reason": f"fant ikke bilde: {image_path}"}
 
-    preview = {"author": cfg.org_urn or "(LINKEDIN_ORG_URN mangler)",
-               "commentary": body, "image": image_path, "altText": headline,
+    alt_text = (draft.get("alt_text") or headline).strip()
+    preview = {"author": cfg.org_urn,
+               "commentary": body, "image": image_path, "altText": alt_text,
                "lifecycleState": "PUBLISHED", "visibility": "PUBLIC"}
     if dry:
         meta = _write_dry_metadata(draft, preview, when=when)
         return {"posted": False, "dry_run": True, "preview": preview, "metadata": str(meta)}
 
-    url = publish_image_post(image_path, body, alt_text=headline, cfg=cfg)
+    url = publish_image_post(image_path, body, alt_text=alt_text, cfg=cfg)
     return {"posted": True, "dry_run": False, "url": url}
