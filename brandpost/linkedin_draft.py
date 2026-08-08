@@ -30,6 +30,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from . import brandkit
 from . import paths
 from . import store
 
@@ -54,6 +55,39 @@ def profile_dir() -> Path:
 def page_url() -> str:
     """Firmasidas URL (helst admin-visningen, da komponerer boksen SOM sida)."""
     return (os.environ.get("BRANDPOST_LINKEDIN_PAGE_URL") or "").strip()
+
+
+# Feeden er komposeren for din EGEN profil. Åpner du den herfra, er avsenderen deg
+# som person; åpner du den fra en firmaside, er avsenderen sida.
+FEED_URL = "https://www.linkedin.com/feed/"
+
+
+def _er_person(brand_key: str) -> bool:
+    """Skriver dette merket som et menneske?
+
+    Ukjent merke gir False, altså firmaside-oppførsel. Det er den forsiktige
+    retningen: tar vi feil den veien, havner utkastet på feil firmaside og blir
+    liggende som utkast. Tar vi feil andre veien, havner firmainnhold på Oscars
+    personlige profil, og det er en verre feil å oppdage i etterkant.
+    """
+    if not brand_key:
+        return False
+    try:
+        return brandkit.load_brand(brand_key).voice_mode == "person"
+    except (ValueError, KeyError, OSError):
+        return False
+
+
+def maal_url(draft: dict) -> str:
+    """Hvor komposeren skal åpnes for dette utkastet.
+
+    Personlige utkast går til feeden, merkevare-utkast til firmasida. Uten dette
+    skilte ingenting dem: alle utkast arvet den globale firmaside-URL-en, så et
+    personlig innlegg ville blitt lagret som et utkast på Tilskudd.ai.
+    """
+    if _er_person(draft.get("brand", "")):
+        return FEED_URL
+    return page_url() or FEED_URL
 
 
 def enabled() -> bool:
@@ -121,10 +155,17 @@ def pick_drafts(vault: Path, *, date: str | None = None, nr: int | None = None,
         text = (d.get("body") or d.get("headline") or "").strip()
         if not text:
             continue
+        # Merkenøkkelen avgjør HVOR komposeren åpnes (se maal_url), så den må
+        # følge utkastet hele veien. brand_name er noe annet: den styrer
+        # mention-valget inne i komposeren.
+        brand_key = (d.get("brand") or "").strip()
         out.append({"key": key, "nr": d.get("nr"), "date": date,
                     "headline": (d.get("headline") or "")[:60],
-                    # brand_name brukes til å verifisere mention-valget i komposeren
-                    "brand_name": (d.get("brand_name") or "").strip(),
+                    "brand": brand_key,
+                    # Et menneske tagger ikke seg selv. Tom brand_name her slår av
+                    # mention-forsøket for personlige utkast.
+                    "brand_name": ("" if _er_person(brand_key)
+                                   else (d.get("brand_name") or "").strip()),
                     "text": text, "image": img_path})
         if len(out) >= limit:
             break
@@ -245,7 +286,7 @@ def _type_with_mentions(page, text: str, expect_name: str) -> int:
 def _prepare_composer(page, draft: dict) -> None:
     """Åpne komposeren og fyll den med utkastets tekst + bilde. Delt av både
     lagre-utkast og planlegg-flyten, så innfyllingen håndteres ett sted."""
-    target = page_url() or "https://www.linkedin.com/feed/"
+    target = maal_url(draft)
     page.goto(target, wait_until="domcontentloaded")
     page.wait_for_timeout(2500)
 
@@ -402,7 +443,8 @@ def schedule_post(vault: Path, *, date: str, nr: int, when: datetime,
         print(f"Fant ikke bilde-utkast {date}#{nr}.")
         return 1
     draft = drafts[0]
-    if not page_url():
+    # Se samme sjekk i save_drafts: en personlig profil trenger ingen firmaside.
+    if not page_url() and not _er_person(draft.get("brand", "")):
         print("BRANDPOST_LINKEDIN_PAGE_URL mangler (firmasidas URL).")
         return 1
     if not commit:
@@ -457,10 +499,14 @@ def save_drafts(vault: Path, *, date: str | None = None, nr: int | None = None,
         return 0
     if not enabled():
         for d in drafts:
+            hvor = "personprofilen" if _er_person(d.get("brand", "")) else "firmasida"
             print(f"  🧪 dry-run (BRANDPOST_BROWSER_ENABLED=0): ville lagret utkast "
-                  f"{d['key']} «{d['headline']}» + {d['image'].name}")
+                  f"{d['key']} «{d['headline']}» + {d['image'].name} → {hvor} "
+                  f"({maal_url(d)})")
         return 0
-    if not page_url():
+    # Kravet gjelder bare merkevare-utkast. For en personlig profil ER
+    # personprofilen målet, og da er en manglende firmaside-URL helt riktig.
+    if not page_url() and any(not _er_person(d.get("brand", "")) for d in drafts):
         print("BRANDPOST_LINKEDIN_PAGE_URL mangler (firmasidas URL). Uten den havner "
               "utkastet på personprofilen; sett den i .env.")
         return 1

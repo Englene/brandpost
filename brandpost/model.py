@@ -23,6 +23,7 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-5"
@@ -72,8 +73,35 @@ def claude_bin() -> str:
 
 # ── bakende: Anthropic-API ─────────────────────────────────
 
+_BILDETYPER = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+               ".gif": "image/gif", ".webp": "image/webp"}
+
+
+def _bildeblokker(images: list[str]) -> list[dict]:
+    """Bildefiler som base64-blokker til Anthropic-API-et.
+
+    Ulesbare eller ukjente filtyper hoppes over i stillhet: kalleren bestemmer selv
+    hva som skal skje når ingen bilder kom med, og det er en bedre plass å ta den
+    avgjørelsen enn her nede."""
+    import base64
+    ut: list[dict] = []
+    for sti in images:
+        p = Path(sti)
+        mediatype = _BILDETYPER.get(p.suffix.lower())
+        if not mediatype:
+            continue
+        try:
+            raa = p.read_bytes()
+        except OSError:
+            continue
+        ut.append({"type": "image", "source": {
+            "type": "base64", "media_type": mediatype,
+            "data": base64.standard_b64encode(raa).decode("ascii")}})
+    return ut
+
+
 def _call_api(system_prompt: str, user_message: str, schema: dict,
-              model: str, timeout: int) -> dict:
+              model: str, timeout: int, images: list[str] | None = None) -> dict:
     try:
         import anthropic
     except ImportError as e:  # noqa: BLE001
@@ -90,6 +118,10 @@ def _call_api(system_prompt: str, user_message: str, schema: dict,
     # fylle inn parametrene, i stedet for å skrive JSON i fritekst som vi må gjette på.
     verktoy = {"name": "svar", "description": "Lever svaret på dette skjemaet.",
                "input_schema": schema}
+    # Bildene FØRST, teksten sist: modellen skal ha sett bildet før den leser
+    # spørsmålet om det.
+    innhold: list[dict] = _bildeblokker(images or [])
+    innhold.append({"type": "text", "text": user_message})
     try:
         resp = client.messages.create(
             model=model,
@@ -97,7 +129,7 @@ def _call_api(system_prompt: str, user_message: str, schema: dict,
             system=system_prompt,
             tools=[verktoy],
             tool_choice={"type": "tool", "name": "svar"},
-            messages=[{"role": "user", "content": user_message}],
+            messages=[{"role": "user", "content": innhold}],
         )
     except Exception as e:  # noqa: BLE001
         tekst = str(e)
@@ -114,9 +146,17 @@ def _call_api(system_prompt: str, user_message: str, schema: dict,
 # ── bakende: Claude Code-kommandolinja ─────────────────────
 
 def _call_cli(system_prompt: str, user_message: str, schema: dict,
-              model: str, timeout: int) -> dict:
+              model: str, timeout: int, images: list[str] | None = None) -> dict:
     cmd = [claude_bin(), "--print", "--model", model, "--output-format", "json",
            "--json-schema", json.dumps(schema), "--append-system-prompt", system_prompt]
+    if images:
+        # Kommandolinja tar ikke bilder som argument, men Claude Code kan lese dem
+        # selv. Stien i meldingen er derfor hele mekanismen, og den forutsetter at
+        # Read er tillatt i kjøringen. Er den ikke det, kommer svaret uten å ha sett
+        # bildet, og kalleren MÅ behandle det som en mislykket vurdering.
+        stier = "\n".join(f"- {s}" for s in images)
+        user_message = (f"Les disse bildefilene med Read-verktøyet før du svarer:\n"
+                        f"{stier}\n\n{user_message}")
     try:
         r = subprocess.run(cmd, input=user_message, capture_output=True,
                            text=True, timeout=timeout)
@@ -144,12 +184,19 @@ def _call_cli(system_prompt: str, user_message: str, schema: dict,
 
 def structured_call(system_prompt: str, user_message: str, schema: dict,
                     timeout: int = 300, label: str = "kall",
-                    model: str | None = None) -> dict[str, Any]:
+                    model: str | None = None,
+                    images: list[str] | None = None) -> dict[str, Any]:
     """Be modellen om JSON som følger `schema`.
 
     Returnerer konvolutten, der svaret ligger under `structured_output`. Konvolutt-
     formen er delt mellom begge bakendene med vilje, så kallerne slipper å vite
     hvilken som svarte.
+
+    `images` er stier til bildefiler modellen skal se på. De to bakendene løser det
+    ulikt: API-et får dem som base64, kommandolinja får stiene og leser dem selv.
+    Forskjellen betyr at CLI-veien kan svare UTEN å ha sett bildet dersom Read ikke
+    er tillatt, så en kaller som tar sikkerhetsavgjørelser på bildeinnhold må kreve
+    et positivt bevis i svaret framfor å stole på at bildet ble lest.
 
     Prøver fallback-modellen én gang hvis primæren feiler, men ALDRI ved konto-vid
     grense: da hjelper ingen modell, og et nytt forsøk er bare bortkastet tid.
@@ -161,10 +208,14 @@ def structured_call(system_prompt: str, user_message: str, schema: dict,
         stige.append(fb)
 
     kall = _call_cli if backend() == "cli" else _call_api
+    # `images` sendes bare når det faktisk er bilder. Uten bilder er kallet
+    # nøyaktig som før, helt ned til antall argumenter, og da fortsetter kode som
+    # bytter ut bakenden (tester, egne bakender) å virke uendret.
+    ekstra = {"images": images} if images else {}
     siste = ""
     for i, m in enumerate(stige):
         try:
-            svar = kall(system_prompt, user_message, schema, m, timeout)
+            svar = kall(system_prompt, user_message, schema, m, timeout, **ekstra)
         except (QuotaExhausted, OppsettFeil):
             raise  # ingen modell fikser en tom nøkkel eller en nådd kontogrense
         except ModelError as e:

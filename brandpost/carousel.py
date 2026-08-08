@@ -37,6 +37,11 @@ def forside_motiv(spec: dict, brand: Brand):
     AI-delen ser typografisk ut (kravet 25. juli 2026)."""
     if not (spec.get("motif") or spec.get("image_prompt")):
         return None
+    # Bestiller bevisst 1080×1350 og ikke slidenes fulle SIZE_SLIDE: gpt-image-2 gir
+    # ikke mer enn 1024×1536 uansett hva vi ber om, så en større bestilling ville bare
+    # blitt oppskalert et steg tidligere. Motivet blir derfor mykere enn typografien
+    # rundt seg når SLIDE_SCALE > 1. Det er en motor-grense, ikke en feil, og det
+    # rammer kun båndet: teksten tegnes i full oppløsning av Pillow.
     return render.engine_content(spec, brand, slides.SIZE_PORTRAIT)
 
 
@@ -65,8 +70,12 @@ def build_carousel(spec: dict, *, brand: Brand | None = None, art=None) -> dict:
                                           art=art))
 
     buf = BytesIO()
+    # Følger slidenes oppløsning: uten dette ville en 2x-slide gitt en PDF-side som er
+    # dobbelt så STOR i punkter, i stedet for dobbelt så tett. Sida beholder altså
+    # målene sine, mens antall piksler per punkt dobles. Det er tettheten LinkedIn
+    # rasteriserer fra, og som avgjør om teksten står skarp i dokumentleseren.
     images[0].save(buf, format="PDF", save_all=True, append_images=images[1:],
-                   resolution=72.0)
+                   resolution=72.0 * slides.SLIDE_SCALE)
     pdf = buf.getvalue()
     slide_pngs = [_img_png(im) for im in images]
     return {

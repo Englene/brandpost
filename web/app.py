@@ -570,8 +570,10 @@ def api_publish(request: Request, day: str, nr: int):
         return _err(f"Publisering feilet: {e}")
     if res.get("posted"):
         planmod.mark_slot(v, day, "publisert", draft_ref={"manifest": day, "nr": nr})
-        return _card_response(request, day, draft,
-                              note=f"Publisert på firmasida. E-post: {res.get('epost', '?')}.")
+        return _card_response(
+            request, day, draft,
+            note=f"Publisert på firmasida. E-post: {res.get('epost', '?')} · "
+                 f"Slack: {res.get('slack', '?')}.")
     if res.get("dry_run"):
         return _card_response(request, day, draft,
                               note="Dry-run (LINKEDIN_ENABLED=0): ingenting postet.")
@@ -893,6 +895,27 @@ def _paafyll_kjorer() -> bool:
     return False
 
 
+def _samtidige_for(brand: str) -> int:
+    """Hvor mange påfyll som kan gå samtidig for dette merket.
+
+    Person-merker får ÉN. To runder som starter samtidig ser ikke hverandres
+    resultater, for dedup leser manifestet og begge leste det før noen skrev.
+    For et firma går det stort sett bra: fagfeltet er bredt nok til at to runder
+    finner ulike vinkler.
+
+    For et menneske gjør det ikke det. Kilden er én persons uke, og 3. august ga
+    to samtidige runder to par nesten identiske innlegg av ti: samme historie om
+    å slutte å regenerere teksten, og samme historie om steg null i veiledningen.
+    Halve bunken var duplikater.
+    """
+    try:
+        if brandkit.load_brand(brand).voice_mode == "person":
+            return 1
+    except (ValueError, KeyError, OSError):
+        pass
+    return BUNKE_SAMTIDIGE
+
+
 def _kanskje_etterfyll(igjen: int, brand: str) -> int:
     """Bestill så mange runder som trengs, og returner hvor mange som startet.
 
@@ -903,7 +926,7 @@ def _kanskje_etterfyll(igjen: int, brand: str) -> int:
         return 0
     mangler = max(1, -(-(BUNKE_MIN + BUNKE_PAAFYLL - igjen) // BUNKE_PAAFYLL))
     startet = 0
-    for _ in range(min(mangler, BUNKE_SAMTIDIGE)):
+    for _ in range(min(mangler, _samtidige_for(brand))):
         if not _etterfyll_bunke(brand):
             break                      # ingen ledig kapasitet
         startet += 1

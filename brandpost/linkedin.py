@@ -250,6 +250,23 @@ def api_commentary(body: str, *, brand_name: str, org_urn: str,
     return body
 
 
+def _er_personlig(brand_key: str | None) -> bool:
+    """Er dette merket et menneske?
+
+    Fail-safe den forsiktige veien: klarer vi ikke å lese profilen, svarer vi
+    False, altså «behandle som firma». Det høres feil ut, men alternativet er
+    verre: en ulesbar merkemappe ville da stanset all publisering for
+    firmasidene. Merker uten profil er uansett firmamerker i praksis.
+    """
+    if not brand_key:
+        return False
+    try:
+        from . import brandkit
+        return brandkit.load_brand(brand_key).voice_mode == "person"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _with_brand_org(cfg: LinkedInConfig, brand_key: str | None) -> LinkedInConfig:
     """Merkets egen firmaside ([linkedin].org_urn i brands/<key>/profile.toml)
     vinner over global LINKEDIN_ORG_URN: samme app + token poster til alle sidene
@@ -268,6 +285,20 @@ def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
                   dry_run: bool | None = None, when: datetime | None = None) -> dict:
     """Publiser ett manifest-utkast. Returnerer {posted, url|reason, dry_run, preview?}.
     Dry-run når `dry_run=True` ELLER `LINKEDIN_ENABLED` er av: ingen API-kall, skriver metadata."""
+    # SPERRE: personlige merker skal ALDRI ut via dette API-et.
+    #
+    # `_with_brand_org` faller til den globale LINKEDIN_ORG_URN når merket ikke
+    # har sin egen, og for en personlig profil er den tom MED VILJE (en utfylt
+    # organisasjons-URN ville gjort profilen til en firmaside). Uten denne sperren
+    # betyr det at et personlig innlegg publiseres som Tilskudd.ai, og det
+    # oppdages først når det står på feil side.
+    #
+    # Personlige innlegg går via linkedin_draft.py, som lagrer et utkast i en
+    # innlogget nettleserøkt og lar eieren trykke publiser selv.
+    if _er_personlig(draft.get("brand")):
+        return {"posted": False, "dry_run": False,
+                "reason": "personlig profil publiseres ikke via API-et, "
+                          "bruk linkedin_draft (nettleserveien)"}
     cfg = _with_brand_org(cfg or load_linkedin_config(), draft.get("brand"))
     dry = (not cfg.enabled) if dry_run is None else bool(dry_run)
     # Handlen hentes fra merket, ikke fra utkastet: manifestet bærer ikke handlen,

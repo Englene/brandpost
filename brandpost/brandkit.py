@@ -106,10 +106,33 @@ class Brand:
     # Språket innleggene skrives på. Var hardkodet norsk i opphavet, helt ned i
     # bildepromptene, så et engelsk merke fikk norske etiketter i illustrasjonen.
     language: str = "no"
+    # "brand" (et selskap som taler) eller "person" (et menneske som taler).
+    # Styrer rolle, taggeregel og konfidensialitetssperre i hjernens systemprompt,
+    # se cli._modus_blokker(). Alt annet i profilen virker likt for begge.
+    #
+    # Uten dette skrev hjernen «vi i <navn>» også for en personlig profil, og la
+    # på produktfakta og salgssperrer som ikke gir mening for et menneske. Det er
+    # forskjellen mellom et innlegg som leses og en annonse folk scroller forbi.
+    voice_mode: str = "brand"
     enabled: bool = True             # med i enabled_brands()/nattkjøringen
     profile_dir: Path | None = None
     linkedin_org_urn: str = ""       # merkets firmaside ([linkedin].org_urn); "" -> global env
     linkedin_handle: str = ""        # @handle som TAGGER firmasida ([linkedin].handle)
+    # Kanal for publisert-varselet ([slack].channel); "" -> BRANDPOST_SLACK_CHANNEL.
+    # Tom i dag med vilje: firmamerkene deler én kanal. Feltet finnes for at det
+    # skal være en konfigurasjonslinje, ikke en kodeendring, den dagen de skal
+    # varsle i hver sin kanal.
+    slack_channel: str = ""
+    # Skal dette merket varsle i Slack i det hele tatt? ([slack].varsle)
+    #
+    # Standard ja, fordi et firmamerke som publiserer bør være synlig for teamet.
+    # Personlige profiler setter den til false: kanalen er et arbeidsverktøy, og
+    # hva Oscar legger ut på sin egen profil er ikke teamets sak.
+    slack_varsle: bool = True
+    # Navnet på miljøvariabelen med tokenet for DETTE merkets workspace
+    # ([slack].token_env). Tom betyr BRANDPOST_SLACK_TOKEN. Aldri selve tokenet:
+    # profile.toml ligger i git.
+    slack_token_env: str = ""
     # prosa-seksjoner (markdown, KUN til hjernen):
     voice: str = ""
     designstil: str = ""
@@ -190,7 +213,15 @@ def _load_profile(key: str) -> Brand:
         profile_dir=d,
         linkedin_org_urn=str((data.get("linkedin") or {}).get("org_urn", "")).strip(),
         linkedin_handle=str((data.get("linkedin") or {}).get("handle", "")).strip().lstrip("@"),
+        slack_channel=str((data.get("slack") or {}).get("channel", "")).strip(),
+        slack_varsle=bool((data.get("slack") or {}).get("varsle", True)),
+        slack_token_env=str((data.get("slack") or {}).get("token_env", "")).strip(),
         language=str(data.get("language", "no")).strip() or "no",
+        # Ukjent verdi faller til "brand": en skrivefeil i profilen skal gi den
+        # forsiktige oppførselen, ikke slå av salgssperrene i det stille.
+        voice_mode=("person"
+                    if str((data.get("voice") or {}).get("mode", "")).strip().lower() == "person"
+                    else "brand"),
         voice=_md(m, "writing.md", "skrivestil.md"),
         designstil=_md(m, "design.md", "designstil.md"),
         arketype=_md(m, "archetype.md", "arketype.md"),

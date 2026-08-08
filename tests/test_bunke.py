@@ -24,6 +24,13 @@ from brandpost import store
 
 NOW = datetime(2026, 7, 31, 10, 0)
 
+# Planleggings-testene under må peke FRAM I TID mot den ekte klokka: `like`-ruten
+# avviser et tidspunkt som er passert, med god grunn (et innlegg planlagt bakover
+# blir aldri publisert). En hardkodet dato råtner derfor stille, og gjorde det:
+# «2026-08-05» var grønt til 6. august og feilet hver dag deretter.
+FRAMTID = (datetime.now() + timedelta(days=5)).replace(
+    hour=10, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M")
+
 
 def _dag(vault: Path, navn: str, drafts: list[dict]) -> Path:
     d = store.socials_dir(vault) / navn
@@ -337,13 +344,13 @@ def test_ja_planlegger_og_rendrer_bildet(bunke_client, monkeypatch):
     monkeypatch.setattr("brandpost.render.render_post",
                         lambda *a, **k: {"png": b"\x89PNG", "how": "mock"})
     r = client.post("/some/api/bunke/2026-07-31/1/like",
-                    data={"when": "2026-08-05T10:00"})
+                    data={"when": FRAMTID})
     assert r.status_code == 200
 
     d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
     assert d["verdict"] == "liked"
     assert d["status"] == "planlagt"
-    assert d["scheduled_at"] == "2026-08-05T10:00"
+    assert d["scheduled_at"] == FRAMTID
     assert d["png_path"] and Path(d["png_path"]).exists()
     # md-fila skal ikke bli stående med plassholderen
     md = Path(d["md_path"]).read_text(encoding="utf-8")
@@ -360,11 +367,11 @@ def test_bildefeil_mister_ikke_planleggingen(bunke_client, monkeypatch):
     monkeypatch.setattr("brandpost.render.render_post", _sprekk)
 
     r = client.post("/some/api/bunke/2026-07-31/1/like",
-                    data={"when": "2026-08-05T10:00"})
+                    data={"when": FRAMTID})
     assert "bildet feilet" in r.text
     d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
     assert d["status"] == "planlagt"
-    assert d["scheduled_at"] == "2026-08-05T10:00"
+    assert d["scheduled_at"] == FRAMTID
 
 
 def test_vurderte_utkast_forsvinner_fra_bunken(bunke_client, monkeypatch):

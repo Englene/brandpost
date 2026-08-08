@@ -27,7 +27,8 @@ from pathlib import Path
 
 from .mailer import no_datestamp, send_email
 from . import paths
-from . import linkedin, store
+from . import brandkit, linkedin, store
+from . import slack as slackmod
 from .email import _doc, _draft_image
 
 # Jobben startes av en tidsstyrt kjøring, ikke fra et skall med repoets .env lastet.
@@ -120,6 +121,48 @@ def _publisert_epost(draft: dict, url: str, *, vault: Path | None,
                       inline_images={cid: png} if png else None)
 
 
+def _publisert_slack(draft: dict, url: str, *, dry_run: bool | None = None) -> dict:
+    """Samme varsel som e-posten, men i kanalen der arbeidet foregår.
+
+    MERKENAVNET er med her, i motsetning til i e-posten. En felles kanal får
+    innlegg fra flere merker, og «Publisert på LinkedIn» uten avsender er ubrukelig
+    når både firmasidene og en personlig profil rapporterer samme sted.
+    `draft["brand_name"]` har ligget klart hele tiden.
+
+    Kort med vilje: overskrift og lenke. Hele brødteksten hører hjemme i e-posten
+    og på LinkedIn, ikke som en vegg av tekst i en kanal.
+    """
+    kanal, varsle, token_env = _slack_for(draft)
+    if not varsle:
+        return {"sent": False, "dry_run": False, "reason": "merket varsler ikke i Slack"}
+    headline = (draft.get("headline") or "").strip() or "(uten overskrift)"
+    merke = (draft.get("brand_name") or draft.get("brand") or "").strip()
+    hvem = f"*{merke}*" if merke else "Publisert"
+    tekst = f"{hvem} la nettopp ut på LinkedIn:\n*{headline}*"
+    if url:
+        tekst += f"\n{url}"
+    return slackmod.send_message(tekst, channel=kanal, token_env=token_env,
+                                 dry_run=dry_run)
+
+
+def _slack_for(draft: dict) -> tuple[str, bool, str]:
+    """(kanal, skal varsle, token_env) for merket bak utkastet.
+
+    Kanal "" betyr den globale. `varsle=False` er hvordan en personlig profil
+    holdes ute av en delt arbeidskanal: hva eieren legger ut på sin egen profil
+    er ikke teamets sak. `token_env` finnes fordi et merke kan ligge i et helt
+    annet Slack-workspace, og da holder det ikke å bytte kanal.
+
+    Best effort: klarer vi ikke å laste profilen, varsler vi i den globale
+    kanalen. Et firmainnlegg som går ut uten kvittering er verre enn ett varsel
+    for mye, og en ulesbar merkemappe skal ikke stanse noe."""
+    try:
+        b = brandkit.load_brand(draft.get("brand", ""))
+    except Exception:  # noqa: BLE001
+        return "", True, ""
+    return b.slack_channel, b.slack_varsle, b.slack_token_env
+
+
 def _urn_i(url: str) -> str:
     """Innleggs-ID-en inne i en LinkedIn-URL, uansett om den er skrevet som
     ugcPost, share eller activity. Tallet er det samme innlegget."""
@@ -190,12 +233,16 @@ def backfill_published_at(vault: Path | None = None, *, hentet: list[dict] | Non
 
 def publiser_ett(mpath: Path, manifest: dict, idx: int, draft: dict, *,
                  vault: Path | None, dry_run: bool | None = None) -> dict:
-    """Publiser ETT utkast, marker det, og varsle på e-post. ÉN vei, brukt både av
-    den planlagte jobben og av Publiser-knappen i dashbordet: da kan de to ikke
-    gli fra hverandre, slik de gjorde da knappen postet uten å sende varselet.
+    """Publiser ETT utkast, marker det, og varsle på e-post og i Slack. ÉN vei,
+    brukt av den planlagte jobben, av Publiser-knappen i dashbordet og av CLI-en:
+    da kan de ikke gli fra hverandre, slik de gjorde da knappen postet uten å sende
+    varselet, og slik CLI-en gjorde helt til 6. august.
 
     Varselet kan aldri velte en vellykket publisering: innlegget ER ute, og en
-    e-postfeil skal rapporteres, ikke rulles tilbake."""
+    varslingsfeil skal rapporteres, ikke rulles tilbake.
+
+    Hvert varsel har SIN EGEN try/except. Med én felles ville en død SMTP-server
+    stanset Slack-meldingen, og de to har ingenting med hverandre å gjøre."""
     res = dict(linkedin.publish_draft(draft, dry_run=dry_run))
     if not res.get("posted"):
         return res
@@ -206,6 +253,13 @@ def publiser_ett(mpath: Path, manifest: dict, idx: int, draft: dict, *,
         res["epost"] = "sendt" if ep.get("sent") else "dry-run"
     except Exception as e:  # noqa: BLE001
         res["epost"] = f"feilet: {type(e).__name__}: {e}"
+    try:
+        sl = _publisert_slack(draft, url)
+        res["slack"] = ("sendt" if sl.get("sent")
+                        else "dry-run" if sl.get("dry_run")
+                        else f"feilet: {sl.get('reason', 'ukjent')}")
+    except Exception as e:  # noqa: BLE001
+        res["slack"] = f"feilet: {type(e).__name__}: {e}"
     return res
 
 
@@ -260,7 +314,11 @@ def publish_due(vault: Path, *, now: datetime | None = None,
             continue
         tall["publisert"] += 1
         print(f"  ✅ {key} «{(d.get('headline') or '')[:44]}» → {res.get('url', '')}")
-        print(f"      e-post: {res.get('epost', 'ukjent')}")
+        # BEGGE varslene i loggen. Med bare e-posten der ser en tapt
+        # Slack-melding ut som om alt gikk bra, og det er nettopp den typen
+        # stillhet som gjorde at feil publiseringsjobb fikk stå i en uke.
+        print(f"      e-post: {res.get('epost', 'ukjent')} · "
+              f"slack: {res.get('slack', 'ukjent')}")
     return tall
 
 

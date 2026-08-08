@@ -12,6 +12,8 @@ carousel.py kan montere dem til én PDF.
 
 from __future__ import annotations
 
+import os
+
 from PIL import Image, ImageDraw
 
 from .brandkit import Brand
@@ -30,9 +32,20 @@ ART_BOT_FRAC = 0.86
 # inn i flaten i stedet for å se ut som et innlimt bilde.
 ART_FEATHER = 0.14
 
+# Hvor mange ganger større enn 1080×1350 slidene tegnes. LinkedIn viser en
+# dokumentpost i en egen leser som er større enn feed-bildet, og på en skjerm med
+# dobbel pikseltetthet ble 1080 px skalert opp: teksten så pikselert ut (meldt av
+# Oscar 3. august 2026 med skjermbilde av forsiden). Alt i denne fila måler seg i
+# andeler av lerretet, så en større flate gir skarpere kanter uten å flytte noe.
+#
+# PDF-en må få samme faktor på `resolution`, ellers vokser bare SIDA i punkter i
+# stedet for at tettheten øker. Se carousel.build_carousel.
+SLIDE_SCALE = max(1, int(os.environ.get("BRANDPOST_SLIDE_SCALE", "2")))
+SIZE_SLIDE = (SIZE_PORTRAIT[0] * SLIDE_SCALE, SIZE_PORTRAIT[1] * SLIDE_SCALE)
+
 
 def _canvas(brand: Brand) -> Image.Image:
-    return Image.new("RGBA", SIZE_PORTRAIT, (*_hex(brand.palette.bg), 255))
+    return Image.new("RGBA", SIZE_SLIDE, (*_hex(brand.palette.bg), 255))
 
 
 def _draw_body(draw, text, font, x, y, max_w, fill, *, line_gap: float = 1.42) -> int:

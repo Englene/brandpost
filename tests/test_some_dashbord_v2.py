@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from pathlib import Path
 
 from brandpost import publisher, render, store
@@ -296,4 +297,37 @@ def test_planlagt_karusell_publiseres_av_jobben(tmp_path, monkeypatch):
     tall = publisher.publish_due(tmp_path, now=datetime(2026, 7, 23, 11, 0))
 
     assert tall["publisert"] == 1 and sett == ["karusell"]
+    assert json.loads(mpath.read_text())["drafts"][0]["status"] == "published"
+
+
+def test_cli_publish_varsler_som_de_andre_veiene(tmp_path, monkeypatch):
+    """Den tredje publiseringsveien, og den som faktisk brukes mest.
+
+    `cli.cmd_publish` kalte linkedin.publish_draft direkte og gjorde sin egen
+    mark_published. Den postet altså uten e-post og uten Slack, nøyaktig samme
+    feil som dashbordet fikk rettet 23. juli, men CLI-en ble aldri flyttet over.
+
+    Det gjorde vondt verre at epost-svaret «publiser: N» går denne veien
+    (meetingnotes/inbox_processor/some_bridge.py kaller `brandpost.cli publish`),
+    så innleggene eieren godkjente fra telefonen gikk ut helt uten kvittering.
+    """
+    from brandpost import cli
+
+    mpath = _manifest(tmp_path, [{"nr": 1, "headline": "H", "status": "proposed",
+                                  "brand": "demo", "brand_name": "Demo Labs"}])
+    monkeypatch.setattr(publisher.linkedin, "publish_draft",
+                        lambda d, dry_run=None: {"posted": True, "url": "https://li/7"})
+    varsler: dict = {}
+    monkeypatch.setattr(publisher, "_publisert_epost",
+                        lambda d, url, **k: varsler.update(epost=url) or {"sent": True})
+    monkeypatch.setattr(publisher, "_publisert_slack",
+                        lambda d, url, **k: varsler.update(slack=url) or {"sent": True})
+    monkeypatch.setattr(cli.planmod, "mark_slot", lambda *a, **k: None)
+
+    args = SimpleNamespace(vault=str(tmp_path), date=mpath.parent.name, post="1",
+                           list=False, json=False, dry_run=False)
+    assert cli.cmd_publish(args) == 0
+
+    assert varsler == {"epost": "https://li/7", "slack": "https://li/7"}, \
+        "CLI-veien må varsle begge steder, som dashbordet og den planlagte jobben"
     assert json.loads(mpath.read_text())["drafts"][0]["status"] == "published"

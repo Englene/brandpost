@@ -151,6 +151,47 @@ og hele genereringsdelen krever ingen LinkedIn-tilgang i det hele tatt.
 
 ---
 
+## Skrive som et menneske
+
+Motoren er skrevet for selskaper: «vi», produktfakta, sperre mot salgspåstander.
+En personlig profil trenger den motsatte aksen, og på LinkedIn er den forskjellen
+verdt mye: personlige profiler får rundt 65 % av feed-allokeringen, firmasider
+rundt 5 %.
+
+Sett dette i merkeprofilen din:
+
+```toml
+[voice]
+mode = "person"
+```
+
+Da bytter systemprompten fem ting: rollen (førsteperson entall i stedet for
+innholdssjef), taggeregelen (du tagger ikke deg selv), fakta-seksjonen (erfaringer
+i stedet for produktark), konfidensialiteten, og den legger til fire harde krav.
+Kravene er ikke stil, de er det som avgjør om innlegget blir sett: forankring i en
+faktisk hendelse med dato, oversettelse så folk uten fagbakgrunn forstår det, ingen
+pitch, og ingen navn på kunder eller kolleger. Alt annet, altså språkreglene,
+LinkedIn-algoritmen, kildekravet og pilar-rotasjonen, er identisk for begge.
+
+**Egne bilder i stedet for generert grafikk.** En privatperson som poster designet
+infografikk på hvert innlegg leser som en kampanje. Legg en bildebank i
+`<workspace>/socials/bevis.json`, så tilbys bildene til hjernen, som setter
+`bevis_id` på utkastene der de passer:
+
+```json
+{"bilder": {"dashbord-1": {
+  "sti": "/…/skjermbilde.png", "sett": true, "sensitiv": false, "egnet": true,
+  "beskrivelse": "Et dashbord med fire kolonner og en feilmelding øverst"}}}
+```
+
+Godkjenningen er fail-closed: alle tre flaggene må være positive, og et manglende
+felt betyr nei. Hvem som fyller banken og hva som regnes som sensitivt er ditt
+valg, fordi det avhenger av hva du jobber med. `brandpost.bildebank` leser den
+bare. Personlige utkast åpner dessuten feed-komposeren i stedet for firmasidas,
+så `linkedin_draft` lagrer dem på profilen din.
+
+---
+
 ## Automatisk drift
 
 Publiseringen er et mekanisk skript og hører hjemme i en vanlig tidsstyrt jobb, ikke
@@ -180,10 +221,10 @@ kodeagenten din. Den finner ut hvilken plattform du er på, skriver jobbfilene t
 
 Ærlig liste, i den rekkefølgen jeg ville tatt det:
 
-- **Personlig profil som mål.** I dag støttes kun firmasider. Personlig publisering
-  er et annet LinkedIn-produkt («Share on LinkedIn», scope `w_member_social`) som
-  er selvbetjent og godkjennes på dager. For de fleste ville det senket terskelen
-  mest.
+- **Personlig profil via API-et.** Utkast til personprofil virker allerede (se
+  «Skrive som et menneske» under), men det går gjennom nettleseren. Automatisk
+  publisering til personprofil er et annet LinkedIn-produkt («Share on LinkedIn»,
+  scope `w_member_social`) som er selvbetjent og godkjennes på dager.
 - **Ytelsesmåling per pilar.** Engasjementstallene hentes inn, men brukes aldri til
   å vri innholdet mot det som faktisk virker.
 - **AI-motiv på alle karusell-slides.** I dag får bare forsiden et motiv, fordi åtte

@@ -14,7 +14,7 @@ from io import BytesIO
 from PIL import Image
 
 from brandpost import (brandkit, carousel, context as ctxmod,
-                                    email as emailmod, render, store)
+                                    email as emailmod, render, slides, store)
 
 
 def _png_image(png: bytes) -> Image.Image:
@@ -191,11 +191,17 @@ def test_carousel_builds_valid_multipage_pdf():
     assert built["n"] == 4
     assert built["pdf"][:4] == b"%PDF"           # gyldig PDF-header
     assert len(built["slide_pngs"]) == 4
-    assert _png_image(built["cover"]).size == render.SIZE_PORTRAIT
+    assert _png_image(built["cover"]).size == slides.SIZE_SLIDE
     from pypdf import PdfReader
     reader = PdfReader(BytesIO(built["pdf"]))
     assert len(reader.pages) == 4                # én side per slide
     assert built["size_mb"] < 10                 # under LinkedIn-grensa
+
+    # Selve poenget med SLIDE_SCALE: SIDA beholder målene sine mens den får flere
+    # piksler. Glemmer man `resolution`, blir sida dobbelt så stor i stedet for
+    # dobbelt så tett, og LinkedIn rasteriserer den like uskarpt som før.
+    boks = reader.pages[0].mediabox
+    assert (round(float(boks.width)), round(float(boks.height))) == render.SIZE_PORTRAIT
 
 
 def test_carousel_store_and_email_attachment(tmp_path):

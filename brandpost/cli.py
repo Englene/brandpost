@@ -16,6 +16,7 @@ og «publiser: nr» er stabilt for hele dagen. `send` filtrerer på merke.
 
 from __future__ import annotations
 
+import copy
 import argparse
 import json
 import os
@@ -26,9 +27,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from . import (brandkit, carousel as carouselmod, context as ctxmod,
-               email as emailmod, model, paths, plan as planmod,
-               render as rendermod, store)
+from . import (bildebank, bildevalg, brandkit, carousel as carouselmod,
+               context as ctxmod, email as emailmod, model, paths,
+               plan as planmod, publisher as pubmod, render as rendermod, store)
 
 # Repo-rotens .env (nøkler og BRANDPOST_*-innstillinger). Eksplisitt sti så
 # routinen finner den uansett arbeidskatalog.
@@ -214,7 +215,37 @@ def _render_posts(vault: Path, brand, posts: list[dict],
                       f"→ {meta['headline'][:44]}")
             else:
                 try:
-                    result = rendermod.render_post(spec, brand=brand, seq=bilde_seq)
+                    # Egne bilder går foran generert grafikk. Banken håndhever
+                    # godkjenningen selv, så en ukjent eller avvist id faller
+                    # stille tilbake til vanlig rendering framfor å feile.
+                    if brand.voice_mode == "person":
+                        # EKTE bilde eller ingen bilde. Aldri et designet kort:
+                        # en privatperson med perfekt merkevaregrafikk på hvert
+                        # innlegg leser som en kampanje, og eieren forkastet
+                        # nettopp det 3. august 2026.
+                        #
+                        # bildevalg prøver utdrag, egne skjermbilder, skjermbilde
+                        # av kilden og til slutt en nøktern figur. Gir alle
+                        # ingenting, er ren tekst svaret, og det er et normalt
+                        # format på en personlig profil.
+                        result = bildevalg.skaff(spec, vault=vault)
+                        if result is None:
+                            bilde_seq += 1
+                            meta = store.write_draft(vault, brand.key, spec, None,
+                                                     index=i, when=when)
+                            drafts.append(meta)
+                            print(f"  📝 {ds} ren tekst: {meta['headline'][:44]}")
+                            continue
+                    else:
+                        # Egne bilder går foran generert grafikk. Banken håndhever
+                        # godkjenningen selv, så en ukjent eller avvist id faller
+                        # stille tilbake til vanlig rendering framfor å feile.
+                        egen = bildebank.finn(spec.get("bevis_id", ""), vault)
+                        if egen is not None:
+                            result = {"png": egen.read_bytes(), "format": "eget-bilde",
+                                      "how": f"bevis:{egen.name}"}
+                        else:
+                            result = rendermod.render_post(spec, brand=brand, seq=bilde_seq)
                 except Exception as e:  # noqa: BLE001
                     # Ett feilet bildekall skal ikke rive med seg de andre ni.
                     # Utkastet lagres uten bilde og kan regenereres fra kortet;
@@ -379,18 +410,25 @@ def cmd_publish(args) -> int:
         print(f"  ⚠️  allerede publisert: {draft.get('linkedin_url', '(ukjent URL)')}")
         return 0
     dry = True if getattr(args, "dry_run", False) else None
-    res = linkedinmod.publish_draft(draft, dry_run=dry)
+    # SAMME VEI som den planlagte jobben og dashbordet: publiser, marker, VARSLE.
+    # Kalte vi linkedin.publish_draft direkte her, gikk innlegget ut uten e-post og
+    # uten Slack. Det var nøyaktig feilen dashbordet fikk rettet 23. juli, men
+    # CLI-en ble aldri flyttet over, og den er veien epost-svaret «publiser: N»
+    # bruker (meetingnotes/inbox_processor/some_bridge.py). Altså gikk de
+    # innleggene eieren godkjente fra telefonen ut helt uten kvittering.
+    res = pubmod.publiser_ett(mpath, manifest, idx, draft, vault=vault, dry_run=dry)
     if res.get("posted"):
-        store.mark_published(mpath, manifest, idx, res["url"])
-        # Plan-sloten MÅ følge med. Dashbordet gjorde dette, CLI-en ikke, så en
-        # publisering herfra etterlot kalenderen på «utkast» for et innlegg som
-        # var ute. Nå gjør begge veier det samme.
+        # Plan-sloten MÅ følge med. publiser_ett markerer utkastet, men rører ikke
+        # kalenderen; dashbordet gjør dette steget selv på samme måte.
         planmod.mark_slot(vault, dag, "publisert",
                           draft_ref={"manifest": dag, "nr": draft.get("nr", sel)})
         if som_json:
             return _publish_json({"ok": True, "posted": True, "dry_run": False,
-                                  "url": res["url"], **felles})
+                                  "url": res["url"],
+                                  "epost": res.get("epost", ""),
+                                  "slack": res.get("slack", ""), **felles})
         print(f"  🔗 publisert → {res['url']}")
+        print(f"     e-post: {res.get('epost', '?')} · slack: {res.get('slack', '?')}")
         return 0
     if res.get("dry_run"):
         who = res.get("preview", {}).get("author", "?")
@@ -453,6 +491,43 @@ _POST_SCHEMA = {
                     "slides": {"type": "array", "items": _SLIDE_SCHEMA},
                     "slot_date": {"type": "string"},
                     "kilder": {"type": "array", "items": {"type": "string"}},
+                    # Id fra bildebanken: bruk et EKTE skjermbilde i stedet for å
+                    # tegne et motiv. Tom eller ukjent id gir vanlig rendering.
+                    "bevis_id": {"type": "string"},
+                    # Bildekjeden for PERSONLIGE innlegg (bildevalg.py). Feltene
+                    # ignoreres for merkevarer, som fortsatt tegner motiv.
+                    "bildetype": {"type": "string",
+                                  "enum": ["utdrag", "bevis", "nettkilde", "figur", "ingen"]},
+                    "utdrag": {
+                        "type": "object",
+                        "properties": {
+                            "tittel": {"type": "string"},
+                            "tekst": {"type": "string"},
+                            "fotnote": {"type": "string"},
+                        },
+                        "required": ["tekst"],
+                    },
+                    "kilde_url": {"type": "string"},
+                    "figur": {
+                        "type": "object",
+                        "properties": {
+                            "tittel": {"type": "string"},
+                            "kilde": {"type": "string"},
+                            "punkter": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "navn": {"type": "string"},
+                                        "verdi": {"type": "number"},
+                                        "etikett": {"type": "string"},
+                                    },
+                                    "required": ["navn", "verdi"],
+                                },
+                            },
+                        },
+                        "required": ["punkter"],
+                    },
                 },
                 "required": ["type", "why_now"],
             },
@@ -461,10 +536,7 @@ _POST_SCHEMA = {
     "required": ["posts"],
 }
 
-_RUN_SYSTEM = """Du er kreativ innholdssjef for {name}. Lag {n} LinkedIn-utkast i et STRAMT,
-MINIMALISTISK uttrykk som nettsida vår: mye luft, få elementer, ro og selvsikkerhet. Tonen
-og stilen er konstant, motivet/vinkelen varierer. DET VIKTIGSTE ER VARIASJON, aldri to
-like idéer. Følg designstilen, stemmen, strategien og preferansene under.
+_RUN_SYSTEM = """{rolle}{modus_regler}
 
 BALANSE: sikt på en JEVN MIKS, ca. halvparten rene typografi-kort og halvparten enkle
 illustrerte motiver.
@@ -494,7 +566,7 @@ Alle: `body` (LinkedIn-teksten), `why_now` (én setning), `pillar` (id fra pilar
 motiv/headline. Les «LÆRDOMMER» og bruk det som funket. Bruk KONTEKSTEN til tema/timing:
 `slack_pulse` er ferske, anonymiserte vinkler fra team-Slacken (dagsaktualitet!) og
 `engagement` viser hva som faktisk fikk respons. ALDRI røpe kundenavn, ikke-lansert
-prising eller interne tall. Ingen emoji/hashtags i selve kortet.
+prising eller interne tall. Ingen emoji/hashtags i selve kortet.{konfidensialitet}
 
 ═══ SPRÅK (naturlig norsk, ufravikelig) ═══
 - ALDRI tankestrek (— eller –): bruk komma, kolon eller punktum. Tallspenn med bindestrek (10-20).
@@ -505,23 +577,14 @@ prising eller interne tall. Ingen emoji/hashtags i selve kortet.
 - Forbudte KI-fraser: «det er verdt å merke seg», «la oss se nærmere på», «i denne
   sammenheng», «det er viktig å poengtere», «som allerede nevnt», «helt enkelt».
 
-═══ LINKEDIN-ALGORITMEN (styrer formen på `body`) ═══
-- FØRSTE LINJE ER ALT: feeden kutter etter ca. 2 linjer. Åpne med en krok som tvinger
-  «...se mer»-klikket: en kontrast, et tall, et spørsmål. Aldri myk oppvarming.
-- 8-12 KORTE linjer med luft mellom: dwell time (lesetid) er det sterkeste signalet.
-- Avslutt med ETT ekte spørsmål leseren kan svare kort på: kommentarer veier ~15x likes.
-  Aldri kunstig «enig?»-mas eller «kommenter JA»-agn (straffes som engagement-bait).
-- ALDRI URL i `body`: eksterne lenker kutter rekkevidden med ca. 60 %. Skriv @{name}
-  når selskapet nevnes (blir en tagg, ikke lenke). Maks én tagg, kun når det er naturlig.
-- INGEN hashtags: modellen leser språket, hashtags er støy.
-- Karusellen er sterkeste format (2-3x dwell time): bruk den når stoffet bærer.
+{form_blokk}
 
 ═══ KILDEKRAV (les nøye, her har det gått galt før) ═══
 Hver tallpåstand og hvert faktautsagn skal ha en linje i `kilder`: «påstand → kilde».
 Kildene vises KUN for eieren (e-post + dashbord), aldri i innlegget.
 
 DU HAR IKKE NETTSØK I DENNE KJØRINGEN. Du kan derfor bare bruke tall fra:
-  (a) KONTEKSTEN du har fått, (b) PRODUKTFAKTA over, eller (c) egne tall som
+  (a) KONTEKSTEN du har fått, (b) fakta-seksjonen over, eller (c) egne tall som
   «intern statistikk 72 627 søknader».
 
 Skriv ALDRI en URL du ikke har fått i konteksten. En URL du husker er en gjetning,
@@ -552,12 +615,383 @@ ikke engang stemte med kronetallet. Eieren fant det. Ikke gjenta det.
 ═══ INNHOLDSPREFERANSER (inkl. HARD-sperrer, følg dem nøye) ═══
 {innholdspreferanser}
 
-═══ PRODUKTFAKTA (bruk fritt som bevis, ikke finn på tall) ═══
+═══ {faktatittel} ═══
 {produkter}
 
 ═══ INNHOLDSPILARER ═══
 {pilarer}
 """
+
+
+# ── merke eller menneske ─────────────────────────────────────────────────────
+#
+# Motoren ble skrevet for selskaper: «vi», produktfakta, sperre mot salgspåstander.
+# En personlig profil trenger den motsatte aksen på nøyaktig fem punkter, og bare
+# de fem. Alt annet, altså språkreglene, LinkedIn-algoritmen, kildekravet og
+# pilar-rotasjonen, er identisk og skal IKKE dupliseres.
+#
+# Derfor plassholdere i én mal framfor to maler: en kopi ville drevet fra
+# hverandre, og da hadde bare det ene merket fått rettelser.
+
+_ROLLE_MERKE = """Du er kreativ innholdssjef for {name}. Lag {n} LinkedIn-utkast i et STRAMT,
+MINIMALISTISK uttrykk som nettsida vår: mye luft, få elementer, ro og selvsikkerhet. Tonen
+og stilen er konstant, motivet/vinkelen varierer. DET VIKTIGSTE ER VARIASJON, aldri to
+like idéer. Følg designstilen, stemmen, strategien og preferansene under."""
+
+_ROLLE_PERSON = """Du skriver {n} LinkedIn-utkast SOM {name}, i FØRSTEPERSON ENTALL.
+
+Dette er en privatperson, ikke et selskap. Du er ikke innholdssjef for en merkevare,
+du er ham som skriver ned noe han faktisk har gjort. Skriv «jeg», aldri «vi», med
+mindre det faktisk var et team som gjorde det. DET VIKTIGSTE ER VARIASJON, aldri to
+like idéer. Følg stemmen, strategien og preferansene under."""
+
+# Fire harde krav som ikke finnes for et selskap. De står i systemprompten og ikke
+# bare i merkets markdown, fordi de avgjør om innlegget i det hele tatt blir sett:
+# LinkedIn nedprioriterer generisk AI-innhold siden mars 2026 og sammenligner hvert
+# innlegg mot forfatterens tidligere stemme.
+_PERSON_REGLER = """
+
+═══ FIRE KRAV SOM GJELDER HVERT ENESTE UTKAST (person) ═══
+
+1. PÅSTAND FØRST, HENDELSE SOM BEVIS. Dette er det viktigste kravet i prompten.
+
+   Hvert utkast skal ha ÉN PÅSTAND som en oppegående person kan være UENIG i.
+   Ikke en observasjon, ikke en opplevelse, ikke en lærdom. En påstand om hvordan
+   verden faktisk henger sammen, som du mener og andre kanskje ikke mener.
+
+   Hendelsen er BEVISET for påstanden, ikke omvendt. Rekkefølgen i hodet ditt
+   skal være: «jeg mener X, og her er det som fikk meg til å mene det», aldri
+   «her er noe som skjedde, hva kan jeg si om det».
+
+   TESTEN, bruk den på hvert eneste utkast før du leverer: kan leseren svare
+   «ja, og?» etter siste linje? Da mangler innlegget en påstand, og du skal kaste
+   det og skrive et annet. Dette er den vanligste feilen, og den drepte fem
+   utkast 3. august: «ikke noe essens i teksten, bare ord ingen mening».
+
+   Eksempler på hva som IKKE er en påstand (alle ordrett fra forkastede utkast):
+     «Terskelen for å teste en idé har falt så langt ned at den ikke stopper
+      noe lenger.» → alle sier dette, ingen er uenig
+     «Det ser rotete ut i kolonnen, og jeg liker det mye bedre.» → en preferanse
+     «Jeg leser fortsatt gjennom alt selv.» → en vane
+
+   Eksempel på hva som ER en påstand, med hendelsen som bevis under:
+     «At det går fort å bygge har gjort «valider før du bygger» til dårlig råd.
+      Det er nå raskere å lage tingen enn å spørre folk om de vil ha den, og
+      svarene du får av å spørre er dårligere enn svarene du får av å vise.»
+   Den kan man være uenig i. Noen VIL være uenig i den. Det er poenget.
+
+   Skriv hendelsen inn i `kilder` på formen «hendelse → dato, kilde». Finner du
+   ingen hendelse som beviser en påstand du faktisk mener, LAG FÆRRE UTKAST.
+
+2. OVERSETTELSE. Innlegget skal forstås av noen som ALDRI har åpnet en terminal.
+   Publikum er ledere og gründere, ikke utviklere. Fagord som loop, pipeline,
+   commit, deploy, API, repo, migrering, agent, prompt, token eller modell skal
+   enten forklares i samme setning eller skrives om.
+     Ikke: «vi migrerte kø-håndteringen og fikset en race condition»
+     Men:  «systemet mistet oppgaver når to ting skjedde samtidig, og det tok tre
+            dager å se hvorfor»
+   Men IKKE oversett bort det spesifikke: behold tallet og situasjonen, bytt bare
+   ut sjargongen. «Tre dager» og «fire forslag» skal overleve oversettelsen. Et
+   innlegg som er blitt allmenngyldig av oversettelsen har feilet like mye som et
+   uforståelig ett.
+
+3. INGEN PITCH. Egne selskaper nevnes som KONTEKST for at han har gjort noe, aldri
+   som noe folk skal kjøpe. «Da vi bygde dette, skjedde dette» går. «Dette
+   produktet hjelper deg med X» går ikke. Ingen oppfordring om å ta kontakt, prøve
+   eller kjøpe. Ender utkastet i en salgsoppfordring, har det feilet.
+
+4. INGEN NAVN PÅ FOLK ELLER KUNDER. Kunder aldri, heller ikke gjenkjennelig
+   omskrevet. Kolleger og samarbeidspartnere skrives som «en kollega», selv om de
+   står med fullt navn i konteksten. KONTEKSTEN ER RÅ ARBEIDSPRAT og inneholder
+   navn som ikke skal ut. Egne selskaper er det eneste unntaket.
+
+5. LENGDE: sikt på 1200-1800 tegn i `body`. Personlige innlegg i det spennet gjør
+   det målbart best, og de fire første rundene lå rundt 1100, altså i underkant.
+   Bruk plassen på å VISE noe konkret, ikke på å utdype poenget.
+
+═══ BILDET: VIS DET, IKKE BARE BESKRIV DET (person) ═══
+
+Sett `bildetype`. Et EKTE bilde som dokumenterer noe slår ren tekst, men et
+designet kort er verre enn ingenting: du er en person, ikke en kampanje.
+
+- `utdrag` FØRSTEVALGET, og undervurdert. Skriver innlegget om noe som finnes som
+  tekst, så VIS den teksten. Sier du «utkastet var stilt opp med ett poeng per
+  avsnitt», legg de faktiske linjene i `utdrag.tekst` så leseren ser det selv. Da
+  blir påstanden håndfast i stedet for en beskrivelse, og folk lagrer innlegg de
+  kan kjenne igjen mønsteret fra senere. `utdrag.tittel` er en kort etikett,
+  `utdrag.fotnote` sier hvor det er fra.
+- `bevis` når et av eierens egne skjermbilder i BILDEKANDIDATER passer. Sett
+  `bevis_id` til id-en derfra. Aldri gjett en id.
+- `nettkilde` når innlegget bygger på en påstand fra en navngitt nettside OG du
+  har fått URL-en i konteksten. Sett `kilde_url`. Aldri en URL du husker.
+- `figur` når to til seks tall bærer poenget. Nøkternt og uten pynt.
+- `ingen` når ingenting av dette dokumenterer noe ekte. Helt greit svar.
+
+Har du et tall i innlegget, skal det ALLTID stå i `kilder` med hvor det kommer
+fra. Et tall uten kilde blir flagget for eieren og må sjekkes for hånd."""
+
+# Ledende linjeskift ligger I verdien, ikke i malen. Ellers får merkevare-modus en
+# tom linje der blokka er tom, og prompten deres endres uten grunn.
+_KONF_PERSON = """
+VIKTIG for denne profilen: konteksten er RÅ og inneholder navn på
+kunder og samarbeidspartnere. Ingen av dem skal ut i et innlegg. Egne selskaper er
+det eneste unntaket, og bare som kontekst, aldri som pitch."""
+
+_TAGG_MERKE = """Skriv @{name}
+  når selskapet nevnes (blir en tagg, ikke lenke). Maks én tagg, kun når det er naturlig."""
+
+_TAGG_PERSON = """Ikke tagg deg selv: du ER
+  avsenderen. Nevner du et av dine egne selskaper, skriv navnet som vanlig tekst."""
+
+
+# ── formen på body ───────────────────────────────────────────────────────────
+#
+# Merkevare-varianten er algoritme-optimalisert og skal være det: et selskap som
+# poster jevnt og formelriktig gjør nettopp jobben sin.
+#
+# Person-varianten måtte skrives om helt. Den første versjonen gjenbrukte
+# merkevare-blokken i den tro at den var nøytral, og resultatet ble forkastet av
+# eieren 3. august 2026 med ordene «ALT for AI, null personlighet». Den var ikke
+# nøytral: «8-12 KORTE linjer med luft mellom» og «avslutt med ETT ekte spørsmål»
+# ER oppskriften på LinkedIn-broileren. Ti utkast kom ut med åtte like lange
+# enkeltsetnings-avsnitt og et pliktspørsmål på slutten, hver eneste gang.
+
+_FORM_MERKE = """═══ LINKEDIN-ALGORITMEN (styrer formen på `body`) ═══
+- FØRSTE LINJE ER ALT: feeden kutter etter ca. 2 linjer. Åpne med en krok som tvinger
+  «...se mer»-klikket: en kontrast, et tall, et spørsmål. Aldri myk oppvarming.
+- 8-12 KORTE linjer med luft mellom: dwell time (lesetid) er det sterkeste signalet.
+- Avslutt med ETT ekte spørsmål leseren kan svare kort på: kommentarer veier ~15x likes.
+  Aldri kunstig «enig?»-mas eller «kommenter JA»-agn (straffes som engagement-bait).
+- ALDRI URL i `body`: eksterne lenker kutter rekkevidden med ca. 60 %. {tagg_regel}
+- INGEN hashtags: modellen leser språket, hashtags er støy.
+- Karusellen er sterkeste format (2-3x dwell time): bruk den når stoffet bærer."""
+
+_FORM_PERSON = """═══ FORMEN PÅ `body` (person) ═══
+
+Du skriver som et menneske som forteller noe, ikke som en profil som leverer
+innhold. Formen skal være UJEVN. Ujevnheten er ikke en svakhet du skal rydde bort,
+den er det eneste som skiller deg fra en mal.
+
+- MAKS 2-4 AVSNITT. Ikke fem, ikke åtte. Er du på seks, slå sammen.
+- FLERE TANKER I SAMME AVSNITT. Dette er den viktigste regelen i hele prompten.
+  Gi ALDRI hvert poeng sitt eget avsnitt med blank linje rundt. Den oppstillingen
+  ER LinkedIn-signaturen, uansett hvor godt innholdet er, og eieren kjenner den
+  igjen umiddelbart: «for struktur, for pent, for ryddig».
+  MINST ETT avsnitt skal ha fire-fem setninger som løper videre i hverandre.
+- ÅPNE MIDT I DET. Start i hendelsen, uten oppvarming og uten krok-konstruksjon.
+  Alt som er bygget for å tvinge fram et «se mer»-klikk, er en mal.
+- SKRIV SOM I ETT DRAG, ikke som noe du har redigert ferdig. Begynn setninger med
+  «Og», «Men», «Altså», «Så», «Uansett». Avbryt deg selv. Legg noe i parentes.
+  Skriv en setning uten verb. Hopp videre før forrige tanke er helt lukket, sånn
+  folk gjør når de forteller noe muntlig.
+- INGEN URL i `body`. {tagg_regel}
+- INGEN hashtags.
+- SLUTTEN: stopp når historien er ferdig, gjerne brått. Ikke oppsummer, ikke
+  generaliser, ikke still et pliktspørsmål. Et spørsmål er lov KUN hvis det er noe
+  du FAKTISK lurer på og ikke vet svaret på selv.
+
+SLIK SER RIKTIG FORM UT (to avsnitt, tanker som løper sammen):
+
+  Jeg mistet 16 forslag på en snarvei jeg hadde lagt inn selv. Piltaster, sånn at
+  jeg kunne bla gjennom utkast uten å ta på musa. Gikk kjempefort. Gikk også galt,
+  for tastene registrerte valg jeg ikke hadde tatt, og da jeg skjønte det var 16
+  forslag borte for godt.
+
+  Fjernet dem bare. Ikke smartere taster, ingen angreknapp, bare vekk. Det som
+  irriterer meg er at det var min egen idé, og at den funket akkurat godt nok til
+  at jeg ikke merket noe på tre kvarter.
+
+SLIK SER FEIL FORM UT (samme innhold, oppstilt som en mal):
+
+  Jeg mistet 16 forslag på en snarvei jeg selv hadde lagt inn.
+
+  Bakgrunnen: jeg har bygget en flate der jeg går gjennom utkast ett og ett.
+
+  Det gikk raskere. Det gikk også galt.
+
+  Jeg fjernet piltastene. Gjorde dem ikke smartere. Bare vekk.
+
+  Det irriterer meg fortsatt at det var min egen idé."""
+
+# Fem grep, hentet ordrett fra utkastene eieren forkastet. Konkrete eksempler
+# virker der abstrakte forbud ikke gjør det: «unngå AI-klang» ga ti innlegg med
+# AI-klang, fordi modellen ikke kjente igjen sin egen.
+_ANTI_AI = """
+
+═══ DETTE GJØR TEKSTEN MASKINELL (hardt forbudt, null forekomster) ═══
+
+Ti utkast ble forkastet 3. august 2026 med ordene «ALT for AI, null personlighet».
+Dette var grepene som drepte dem. De er sitert ordrett, så du kjenner dem igjen:
+
+1. «IKKE X, MEN Y». Forkastet: «Det var ikke stabilitet.» og «Det som avslørte det
+   var ikke tallene. Det var antallet observasjoner.» Si hva som VAR tilfelle, og
+   la det stå. Dette gjelder også siste linje.
+
+2. PARALLELLAFORISMEN. Forkastet: «Et system som krasjer er billig. Et system som
+   fortsetter å svare pent på gamle data er dyrt.» To speilvendte setninger som
+   lander en visdom. Dette er den mest gjenkjennelige AI-figuren som finnes.
+
+3. LEKSJONEN TIL SLUTT. Forkastet: «Refleksen om å generere på nytt er den dyreste
+   vanen jeg har hatt med disse verktøyene.» Ikke fortell leseren hva historien
+   betyr. Har den et poeng, ser de det selv. Stoler du ikke på det, er historien
+   for dårlig, og da skal du velge en annen.
+
+4. PLIKTSPØRSMÅLET. Forkastet: «Hva ser du på for å vite at en rapport du får
+   faktisk er ny?» Ingen mennesker spør sånn.
+
+5. DEN JEVNE RYTMEN. Åtte avsnitt på én setning hver, alle omtrent like lange.
+
+6. DEN RENE OVERFLATEN. Ingen sidespor, ingen innskudd, ingen halvferdige tanker,
+   ingen selvavbrytelser. Perfekt polert tekst er maskintekst. Du har lov til å
+   rote litt.
+
+7. OPPSTILLINGEN. Andre runde med utkast ble ogsaa forkastet, selv om ordene var
+   bedre: «for struktur, for pent, for ryddig». Feilen var at hvert poeng fikk
+   sitt eget avsnitt med blank linje rundt, fem ganger etter hverandre. Det ser
+   ut som en presentasjon, ikke som noe et menneske skrev. Se formkravet over:
+   flere tanker skal bo i samme avsnitt."""
+
+
+def _stemmeprover(vault, maks: int = 12) -> str:
+    """Ordrette utdrag av hvordan eieren faktisk skriver, som IMITASJONSMÅL.
+
+    Prøvene ligger allerede i konteksten, men der leses de som informasjon om hva
+    som har skjedd. Å sette dem i systemprompten med en eksplisitt instruksjon om
+    å matche rytmen er noe helt annet, og det er den eneste kilden vi har til
+    hvordan han faktisk høres ut. LinkedIn måler nettopp dette: siden mars 2026
+    sammenlignes hvert innlegg mot forfatterens tidligere stemme.
+
+    Tom streng når fila mangler. Da faller vi tilbake på reglene alene, som er
+    dårligere, men ikke ødelagt.
+    """
+    p = paths.notes_dir(vault) / "auto-arbeidsmate.md"
+    try:
+        linjer = [rad.strip() for rad in p.read_text(encoding="utf-8").splitlines()
+                  if rad.startswith("- ")]
+    except OSError:
+        return ""
+    if not linjer:
+        return ""
+    return """
+
+═══ SLIK HØRES DU FAKTISK UT (matcher RYTMEN, ikke temaet) ═══
+
+Under står ordrette utdrag av hvordan du faktisk skriver, hentet fra dine egne
+arbeidsøkter. Legg merke til hva som kjennetegner dem: du starter setninger med
+«Også» og «Altså», du hopper mellom tanker, du bruker «typ», «e.l.» og «greia», du
+stiller spørsmål midt i en setning, og du har skrivefeil.
+
+LEGG SÆRLIG MERKE TIL AT DE IKKE HAR AVSNITT. Tankene løper videre i hverandre,
+det ene henger på det andre, og ingenting er stilt opp som punkter. Sånn skriver
+du. Et innlegg der hver tanke står alene med luft rundt, høres ikke ut som deg
+uansett hvor gode ordene er.
+
+Du skal IKKE kopiere ordene eller temaene, og du skal ikke gjenta skrivefeilene.
+Du skal treffe TONEN: muntlig, utålmodig, konkret, uten pynt. Teksten din skal
+ligne mer på dette enn på en LinkedIn-post.
+
+""" + "\n".join(linjer[:maks])
+
+
+def _post_schema(brand) -> dict:
+    """Schemaet, med `bildetype` PÅKREVD for personlige merker.
+
+    En instruksjon midt i en systemprompt på 14 000 tegn blir ikke fulgt: første
+    runde med bildekjeden ga femten utkast der ikke ett eneste hadde satt
+    `bildetype`, selv om blokka sto der og forklarte alle fire kildene. Et
+    påkrevd schema-felt er den eneste måten å garantere at valget faktisk tas.
+
+    «ingen» er med i enum-en nettopp for at kravet ikke skal presse fram et
+    bilde som ikke dokumenterer noe.
+    """
+    if brand.voice_mode != "person":
+        return _POST_SCHEMA
+    s = copy.deepcopy(_POST_SCHEMA)
+    post = s["properties"]["posts"]["items"]
+    post["required"] = sorted(set(post.get("required", [])) | {"bildetype"})
+    # `utdrag` er en RENDER av tekst, ikke et bilde av noe. Å fjerne den fra
+    # fallback-kjeden holdt ikke: modellen valgte den eksplisitt i to av fem
+    # utkast, og et tekstkort i monofont er nøyaktig den «typgrafi greia» eieren
+    # forkastet. Ut av valgmulighetene helt for personlige merker.
+    post["properties"]["bildetype"]["enum"] = ["bevis", "nettkilde", "figur", "ingen"]
+    return s
+
+
+def _modus_blokker(brand, n: int, vault=None) -> dict:
+    """Plassholderne i _RUN_SYSTEM som skiller et menneske fra et selskap.
+
+    Merk at `form_blokk` er den viktigste av dem, ikke `rolle`. Det å bytte «vi»
+    mot «jeg» gjør ingenting hvis formkravene fortsatt beskriver en LinkedIn-mal:
+    første forsøk gjorde nettopp det, og ti utkast kom ut identiske i rytme.
+    """
+    if brand.voice_mode == "person":
+        return {
+            "rolle": _ROLLE_PERSON.format(name=brand.name, n=n),
+            "modus_regler": _PERSON_REGLER,
+            "konfidensialitet": _KONF_PERSON,
+            "faktatittel": "FAKTA OM DET DU HAR BYGGET (kontekst, ikke produktark)",
+            "form_blokk": (_FORM_PERSON.format(tagg_regel=_TAGG_PERSON)
+                           + _ANTI_AI + _stemmeprover(vault)),
+        }
+    return {
+        "rolle": _ROLLE_MERKE.format(name=brand.name, n=n),
+        "modus_regler": "",
+        "konfidensialitet": "",
+        "faktatittel": "PRODUKTFAKTA (bruk fritt som bevis, ikke finn på tall)",
+        "form_blokk": _FORM_MERKE.format(tagg_regel=_TAGG_MERKE.format(name=brand.name)),
+    }
+
+
+# Fagfelt-nøytral med vilje. Sto tidligere med «en ekte situasjon fra en søknad»
+# og «hva som faktisk skjer i ordningene», som er ETT bestemt selskaps fagfelt.
+# Motoren er felles og kjører for hvem som helst: en regnskapsfører eller en
+# tannlege som legger inn sitt eget merke skal ikke bli bedt om å skrive om
+# søknader. Hva merket faktisk driver med står i merkets egne markdown-filer,
+# og det er dit slikt hører.
+_VARIASJON_MERKE = (
+    "\n\nVARIASJON (rettingen 22. juli): bytt ÅPNINGSGREP mellom "
+    "utkastene. Ikke la flere innlegg starte med samme setningsform. "
+    "Veksle mellom: et konkret tall, en ekte situasjon fra arbeidet deres, et "
+    "tydelig standpunkt, en presis definisjon, eller en observasjon om "
+    "hva som faktisk skjer i fagfeltet. Tørr vidd og tydelige meninger "
+    "er ønsket når de er forankret i noe konkret. Se anti-mønstrene i "
+    "skrivestilen: ingen «ikke X, men Y»-antitese, ingen «de fleste "
+    "tror»-oppsett, maks ett dramatisk ettordsavsnitt. "
+    "AVSLUTNINGEN teller også: ikke la flere utkast ende på samme "
+    "«det handler ikke om X, det handler om Y»-figur. Avslutt heller "
+    "med et konkret neste steg, en observasjon eller et ekte spørsmål.")
+
+# Merkevare-varianten viser til «en søknad» og «ordningene», som er Tilskudd.ai
+# sitt fagfelt og meningsløst for et menneske. Verre: den ber om å avslutte med
+# «et konkret neste steg eller et ekte spørsmål», som er stikk i strid med
+# person-formens «stopp når historien er ferdig». To motstridende instruksjoner i
+# samme prompt gir alltid den mest mal-aktige av dem.
+_VARIASJON_PERSON = (
+    "\n\nVARIASJON: la utkastene høres ut som ULIKE DAGER, ikke som ulike "
+    "utgaver av samme mal. Bytt åpningsgrep: en dato og noe som skjedde, en "
+    "irritasjon, et tall du ble overrasket over, noe du trodde og tok feil om, "
+    "eller bare midt i en tanke. "
+    "Bytt også LENGDE og TEMPERATUR mellom dem: ett utkast kan være femti ord og "
+    "irritert, det neste tre avsnitt og grundig. "
+    "Tørr vidd og tydelige meninger er ønsket. Du har lov til å være småirritert, "
+    "og du har lov til å synes noe er morsomt. "
+    "TEST HVERT UTKAST TIL SLUTT: hvis det kunne stått på hvilken som helst "
+    "LinkedIn-profil som skriver om AI, kast det og skriv et annet. Det skal "
+    "være noe der bare den som faktisk gjorde det kunne visst."
+    # De to kravene under sto i systemprompten og ble ignorert i femten utkast på
+    # rad: ingen satte `bildetype`, og lengden lå på 589-1008 tegn mot målet.
+    # Sist i brukermeldingen er den plassen modellen faktisk leser.
+    "\n\nTO TING SOM BLE GLEMT SIST, og som teller like mye som teksten:"
+    "\n1) LENGDE: 1200-1800 tegn i `body`. Ligger du under 1200, MANGLER det noe "
+    "konkret, og løsningen er å VISE en ting til, ikke å utdype poenget."
+    "\n2) BILDE: sett `bildetype` på hvert utkast. Kan innlegget vise fram noe som "
+    "finnes som tekst, altså et utkast, en logglinje, en regel du skrev, så bruk "
+    "`utdrag` og legg de faktiske linjene i `utdrag.tekst`. Det er forskjellen på "
+    "å påstå noe og å vise det. Har du ingenting ekte å vise, sett `ingen`.")
+
+
+def _variasjon_block(brand) -> str:
+    return (_VARIASJON_PERSON if brand.voice_mode == "person" else _VARIASJON_MERKE)
 
 
 def _pilar_block(brand, coverage: dict) -> str:
@@ -717,7 +1151,7 @@ def _cmd_run(args) -> int:
                       + json.dumps([{k: s.get(k) for k in ("date", "tema", "pillar", "format")}
                                     for s in slots], ensure_ascii=False))
     system = _RUN_SYSTEM.format(
-        name=brand.name, n=n,
+        **_modus_blokker(brand, n, vault),
         designstil=(brand.designstil or "(følg stemme + designtokens)")[:3000],
         voice=brandkit.voice_guide(brand)[:3500],
         arketype=(brand.arketype or "(ingen definert)")[:2000],
@@ -735,25 +1169,20 @@ def _cmd_run(args) -> int:
             + _emne_block(sperret)
             + _avvist_block(store.rejected_recently(vault, brand_key=brand.key))
             + ("\n\nLÆRDOMMER (hva som har funket, bruk det):\n" + lessons if lessons else "")
+            # Egne bilder tilbys bare til personlige profiler. En firmaside skal ha
+            # sitt eget visuelle uttrykk, og et tilfeldig skjermbilde fra
+            # skrivebordet midt i en merkevare-feed er ikke et bevis, det er et
+            # brudd. Blokka er uansett tom når banken ikke er fylt.
+            + (bildebank.kandidat_blokk(vault) if brand.voice_mode == "person" else "")
             + slot_block
-            + "\n\nVARIASJON (rettingen 22. juli): bytt ÅPNINGSGREP mellom "
-              "utkastene. Ikke la flere innlegg starte med samme setningsform. "
-              "Veksle mellom: et konkret tall, en ekte situasjon fra en søknad, et "
-              "tydelig standpunkt, en presis definisjon, eller en observasjon om "
-              "hva som faktisk skjer i ordningene. Tørr vidd og tydelige meninger "
-              "er ønsket når de er forankret i noe konkret. Se anti-mønstrene i "
-              "skrivestilen: ingen «ikke X, men Y»-antitese, ingen «de fleste "
-              "tror»-oppsett, maks ett dramatisk ettordsavsnitt. "
-              "AVSLUTNINGEN teller også: ikke la flere utkast ende på samme "
-              "«det handler ikke om X, det handler om Y»-figur. Avslutt heller "
-              "med et konkret neste steg, en observasjon eller et ekte spørsmål."
+            + _variasjon_block(brand)
             + f"\n\nLag {n} utkast nå: unikt motiv per bilde, og en pilar (pillar-id) per utkast.")
     # Tida skalerer med antall utkast, og taket er satt etter to observerte
     # tidsavbrudd: først på 300 s, så på 600 s med ti utkast (opus-5 falt, og
     # sonnet-5 etter den). Hvert utkast krever en full runde med kontekst,
     # kildekrav og karantene, så 120 s per stykk er ikke rundhåndet.
     tid = max(300, 120 * n)
-    env = loop_model.structured_call(system, user, _POST_SCHEMA, label="generering",
+    env = loop_model.structured_call(system, user, _post_schema(brand), label="generering",
                                      timeout=tid)
     out = env.get("structured_output") or {}
     posts = out.get("posts") or []
