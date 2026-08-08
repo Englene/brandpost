@@ -145,6 +145,75 @@ def _call_api(system_prompt: str, user_message: str, schema: dict,
 
 # ── bakende: Claude Code-kommandolinja ─────────────────────
 
+_CLI_ERROR_TEXT_KEYS = {"detail", "error", "errors", "message", "reason", "result"}
+_CLI_QUOTA_MARKERS = (
+    "credit balance",
+    "credit limit",
+    "credits exhausted",
+    "hit your limit",
+    "quota exceeded",
+    "rate limit",
+    "usage limit",
+    "weekly limit",
+    "weekly usage",
+)
+
+
+def _kort_feiltekst(tekst: str, grense: int = 200) -> str:
+    """Enlinjesammendrag uten at hele CLI-svaret havner i logger/feilmeldinger."""
+    return " ".join(tekst.split())[:grense]
+
+
+def _har_cli_kvotesignal(verdi: object) -> bool:
+    """Finn konto-/rategrense i en Claude CLI-konvolutt uten å serialisere den.
+
+    Claude CLI legger noen API-feil i stdout som JSON, og kan samtidig returnere
+    både exit 0 og exit != 0. Derfor kan ikke stderr alene brukes som fasit.
+    """
+    if isinstance(verdi, dict):
+        for nokkel, innhold in verdi.items():
+            if str(nokkel).lower() == "api_error_status":
+                try:
+                    if int(innhold) == 429:
+                        return True
+                except (TypeError, ValueError):
+                    pass
+            if _har_cli_kvotesignal(innhold):
+                return True
+        return False
+    if isinstance(verdi, list):
+        return any(_har_cli_kvotesignal(element) for element in verdi)
+    if isinstance(verdi, str):
+        tekst = verdi.lower()
+        return any(markor in tekst for markor in _CLI_QUOTA_MARKERS)
+    return False
+
+
+def _cli_feilsammendrag(envelope: dict[str, object]) -> str:
+    """Trekk ut et kort, kontrollert sammendrag fra kjente feilfelt."""
+    funn: list[str] = []
+
+    def legg_til(verdi: object) -> None:
+        if len(" ".join(funn)) >= 200:
+            return
+        if isinstance(verdi, str):
+            kort = _kort_feiltekst(verdi)
+            if kort:
+                funn.append(kort)
+        elif isinstance(verdi, dict):
+            for nokkel, innhold in verdi.items():
+                if str(nokkel).lower() in _CLI_ERROR_TEXT_KEYS:
+                    legg_til(innhold)
+        elif isinstance(verdi, list):
+            for element in verdi:
+                legg_til(element)
+
+    for nokkel, verdi in envelope.items():
+        if str(nokkel).lower() in _CLI_ERROR_TEXT_KEYS:
+            legg_til(verdi)
+    return _kort_feiltekst("; ".join(funn))
+
+
 def _call_cli(system_prompt: str, user_message: str, schema: dict,
               model: str, timeout: int, images: list[str] | None = None) -> dict:
     cmd = [claude_bin(), "--print", "--model", model, "--output-format", "json",
@@ -168,14 +237,36 @@ def _call_cli(system_prompt: str, user_message: str, schema: dict,
         raise ModelError(f"{model}: tidsavbrudd etter {timeout}s") from e
 
     feil = (r.stderr or "").strip()
-    if r.returncode != 0 or not r.stdout.strip():
-        if "credit" in feil.lower() or "usage limit" in feil.lower():
-            raise QuotaExhausted(f"{model}: {feil[:200]}")
-        raise ModelError(f"{model}: exit {r.returncode}: {feil[:200]}")
+    stdout = (r.stdout or "").strip()
+    if not stdout:
+        if _har_cli_kvotesignal(feil):
+            raise QuotaExhausted(f"{model}: Claude-bruksgrensen er nådd")
+        sammendrag = _kort_feiltekst(feil) or "Claude CLI ga ikke noe svar"
+        raise ModelError(f"{model}: exit {r.returncode}: {sammendrag}")
     try:
-        envelope = json.loads(r.stdout)
+        envelope = json.loads(stdout)
     except json.JSONDecodeError as e:
+        # Teksten brukes bare til klassifisering. Den gjengis aldri i unntaket.
+        if _har_cli_kvotesignal(stdout) or _har_cli_kvotesignal(feil):
+            raise QuotaExhausted(f"{model}: Claude-bruksgrensen er nådd") from e
+        if r.returncode != 0:
+            sammendrag = _kort_feiltekst(feil) or "Claude CLI returnerte ugyldig JSON"
+            raise ModelError(f"{model}: exit {r.returncode}: {sammendrag}") from e
         raise ModelError(f"{model}: ugyldig JSON-svar ({e})") from e
+    if not isinstance(envelope, dict):
+        raise ModelError(f"{model}: JSON-svaret var ikke en objektkonvolutt")
+
+    er_feil = envelope.get("is_error") is True
+    if (r.returncode != 0 or er_feil) and _har_cli_kvotesignal(envelope):
+        # Ikke ta med stdout-detaljene: de kan inneholde prompt, interne felter eller
+        # andre store/sensitive verdier. Feiltypen er all informasjon kalleren trenger.
+        raise QuotaExhausted(f"{model}: Claude-bruksgrensen er nådd")
+    if r.returncode != 0 or er_feil:
+        sammendrag = _cli_feilsammendrag(envelope)
+        if not sammendrag:
+            sammendrag = _kort_feiltekst(feil) or "Claude CLI rapporterte en feil"
+        status = f"exit {r.returncode}: " if r.returncode != 0 else ""
+        raise ModelError(f"{model}: {status}{sammendrag}")
     envelope["_model"] = model
     return envelope
 
