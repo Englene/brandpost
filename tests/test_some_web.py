@@ -22,6 +22,7 @@ from main import app
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
     monkeypatch.delenv("LINKEDIN_ENABLED", raising=False)
+    monkeypatch.delenv("BRANDPOST_ALLOWED_ORIGINS", raising=False)
     return TestClient(app, headers={"Origin": "http://testserver"})
 
 
@@ -62,6 +63,63 @@ def test_alle_post_krever_samme_origin(client):
                           headers={"Origin": ""})
     assert cross.status_code == 403
     assert missing.status_code == 403
+
+
+def test_eksplisitt_originliste_tillater_bare_kjent_origin_og_host(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv(
+        "BRANDPOST_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5050, http://localhost:5050",
+    )
+
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:5050",
+        headers={"Origin": "http://localhost:5050"},
+    ) as allowed_client:
+        allowed = allowed_client.post("/some/api/draft/2099-01-01/1/delete")
+    assert allowed.status_code == 404  # passed Origin guard; draft intentionally absent
+
+    # Before the explicit allowlist, matching attacker-controlled Origin + Host
+    # looked same-origin. Both now fail membership even though they still match.
+    with TestClient(
+        app,
+        base_url="http://attacker.example",
+        headers={"Origin": "http://attacker.example", "Host": "attacker.example"},
+    ) as attacker_client:
+        rebound = attacker_client.post("/some/api/draft/2099-01-01/1/delete")
+    assert rebound.status_code == 403
+
+    with TestClient(
+        app,
+        base_url="http://attacker.example",
+        headers={"Origin": "http://127.0.0.1:5050", "Host": "attacker.example"},
+    ) as spoofed_host_client:
+        spoofed_host = spoofed_host_client.post("/some/api/draft/2099-01-01/1/delete")
+    assert spoofed_host.status_code == 403
+
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:5050",
+        headers={"Origin": "http://attacker.example"},
+    ) as cross_origin_client:
+        cross_origin = cross_origin_client.post("/some/api/draft/2099-01-01/1/delete")
+    assert cross_origin.status_code == 403
+
+
+def test_feil_i_konfigurert_originliste_feiler_lukket(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv(
+        "BRANDPOST_ALLOWED_ORIGINS",
+        "http://127.0.0.1:5050, ikke-en-origin",
+    )
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:5050",
+        headers={"Origin": "http://127.0.0.1:5050"},
+    ) as configured_client:
+        response = configured_client.post("/some/api/draft/2099-01-01/1/delete")
+    assert response.status_code == 403
 
 
 def test_calendar_shows_scheduled_draft_and_slot(client, tmp_path):

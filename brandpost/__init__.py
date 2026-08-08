@@ -9,4 +9,4 @@ Uten denne fila er pakken en implisitt namespace-pakke. Det virker helt til noe
 annet på sys.path også heter `brandpost`, og da blir feilen svært forvirrende.
 """
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"

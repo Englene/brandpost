@@ -243,6 +243,28 @@ automatisk, og jeg vil godkjenne dem selv før noe publiseres.
 Den spør hvilke dager du vil ha innlegg, og setter opp resten. Den viser deg også
 at jobbene faktisk kjører, ikke bare at de burde.
 
+### LinkedIn-innlogging uten å vise tokenene
+
+Når firmasiden har fått API-tilgang, legger du LinkedIn-appens klient-ID og
+klienthemmelighet i den lokale miljøfila og kjører:
+
+```bash
+BRANDPOST_ENV_FILE=/absolutt/sti/til/.env python -m brandpost.linkedin_auth
+```
+
+Kommandoen nekter å starte uten den eksplisitte filpekeren. Access- og
+refresh-token lagres atomisk bare i denne fila, som settes til filmodus `0600`;
+verdiene skrives aldri til terminal eller logger. Du får en liste over
+administrator-sidenes ikke-hemmelige URN-er. Velg riktig URN og legg den i
+`[linkedin].org_urn` i det aktuelle merkets `profile.toml` — ikke som en global
+miljøverdi. Ikke lim miljøfila, nøkler eller tokenverdier inn i chat.
+
+Dashboardets muterende kall kan låses til kjente adresser med en kommadelt liste,
+for eksempel `BRANDPOST_ALLOWED_ORIGINS=http://127.0.0.1:5050,http://localhost:5050`.
+Når den er satt, må både nettleserens `Origin` og forespørselens Host/base-adresse
+stå i lista. Dermed holder det ikke for en angriper å få en falsk Origin og Host
+til å ligne på hverandre. En ugyldig liste stopper alle POST-kall.
+
 ### De to måtene å planlegge på
 
 - **Claude Code** har *routines*: faste kjøringer på et klokkeslett. Be

@@ -133,19 +133,30 @@ requires a registered company with a verified LinkedIn page.
 2. Request the **Community Management API** product. Expect days to weeks, and
    expect to describe what your app will do.
 3. Add `http://localhost:8765/callback` as a redirect URL.
-4. Put `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` in `.env`.
+4. Put `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` in one local environment
+   file, set its mode to `0600`, and point `BRANDPOST_ENV_FILE` at its exact path.
+   Never paste that file or its values into chat.
 5. Run the one-time login:
    ```bash
-   python -m brandpost.linkedin_auth
+   BRANDPOST_ENV_FILE=/absolute/path/to/.env python -m brandpost.linkedin_auth
    ```
-   It opens your browser, catches the redirect on localhost, and prints the tokens
-   for you to paste into `.env`.
-6. Find your page ID in the admin URL
-   (`linkedin.com/company/<ID>/admin/dashboard/`) and set
-   `org_urn = "urn:li:organization:<ID>"` in your brand profile.
+   It opens your browser, catches the redirect on localhost, and writes the access
+   and refresh tokens atomically to that file. Token values are never printed.
+   The command refuses to start without an explicit `BRANDPOST_ENV_FILE`.
+6. The command lists the company-page URNs for which the signed-in user is an
+   administrator. Choose the right one and set
+   `org_urn = "urn:li:organization:<ID>"` under `[linkedin]` in that brand's
+   `profile.toml`. It deliberately never writes a global organization URN.
 
 The scopes you need are `w_organization_social` (publish) and
 `r_organization_social` (read your own posts).
+
+For the dashboard, set `BRANDPOST_ALLOWED_ORIGINS` to the comma-separated exact
+origins that may submit changes, for example
+`http://127.0.0.1:5050,http://localhost:5050`. When configured, every POST
+requires both the browser's `Origin` and the request's Host/base origin to be on
+that list. An invalid list fails closed. If unset, the local same-origin check is
+kept as the compatibility fallback.
 
 **If you are rejected,** or you have no company page: the browser path still works,
 and the whole generation side needs no LinkedIn access at all.

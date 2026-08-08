@@ -52,9 +52,39 @@ from brandpost.context import _engagement_summary, _latest_pulse  # noqa: E402
 WEB_DIR = Path(__file__).parent
 
 
-def _origin(value: str) -> tuple[str, str]:
-    parsed = urlsplit(value)
-    return parsed.scheme.lower(), parsed.netloc.lower()
+def _origin(value: str) -> tuple[str, str, int | None] | None:
+    """Parse one strict HTTP(S) origin into a canonical comparison key."""
+    try:
+        parsed = urlsplit(value)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+            return None
+        port = parsed.port
+    except ValueError:
+        return None
+    if port == (80 if scheme == "http" else 443):
+        port = None
+    return scheme, parsed.hostname.lower().rstrip("."), port
+
+
+def _configured_origins() -> set[tuple[str, str, int | None]] | None:
+    """Return the explicit mutation allowlist; ``None`` means not configured.
+
+    One malformed entry invalidates the complete configured list. A typo must
+    stop mutations, not silently weaken the protection to same-origin mode.
+    """
+    raw = os.environ.get("BRANDPOST_ALLOWED_ORIGINS")
+    if raw is None or not raw.strip():
+        return None
+    entries = [entry.strip() for entry in raw.split(",") if entry.strip()]
+    parsed = {_origin(entry) for entry in entries}
+    if not entries or None in parsed:
+        return set()
+    return {origin for origin in parsed if origin is not None}
 
 
 async def _same_origin_mutation(request: Request) -> None:
@@ -66,9 +96,17 @@ async def _same_origin_mutation(request: Request) -> None:
     """
     if request.method != "POST":
         return
-    supplied = (request.headers.get("origin") or "").strip()
-    expected = _origin(str(request.base_url))
-    if not supplied or _origin(supplied) != expected:
+    supplied = _origin((request.headers.get("origin") or "").strip())
+    request_origin = _origin(str(request.base_url))
+    allowed = _configured_origins()
+    if allowed is not None:
+        # Checking only Origin is insufficient: an attacker-controlled Host can
+        # make Origin and base_url agree during DNS rebinding. Both ends must be
+        # origins the operator explicitly trusts.
+        if supplied not in allowed or request_origin not in allowed:
+            raise HTTPException(status_code=403, detail="POST Origin er ikke tillatt")
+        return
+    if supplied is None or supplied != request_origin:
         raise HTTPException(status_code=403, detail="POST krever samme Origin som dashbordet")
 
 
