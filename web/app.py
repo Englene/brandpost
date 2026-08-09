@@ -1285,7 +1285,6 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
                     f"Velg et tidspunkt fram i tid, ellers blir innlegget "
                     f"aldri publisert.")
 
-    store.mark_verdict(mpath, manifest, idx, "liked")
     # Bildet ble ikke laget da forslaget kom, nettopp for å slippe å betale for
     # det som forkastes. Nå er det bestilt.
     if not (draft.get("png_path") or "").strip() and draft.get("type") != "karusell":
@@ -1300,6 +1299,7 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
             # Planleggingen skal ikke ryke fordi bildekallet gjorde det. Utkastet
             # får dato, og bildet kan regenereres fra kortet i kalenderen.
             store.mark_scheduled(mpath, manifest, idx, when)
+            store.mark_verdict(mpath, manifest, idx, "liked")
             return _err(f"Planlagt, men bildet feilet: {e}. Regenerer fra kalenderen.")
 
     if linkedin_draft.enabled():
@@ -1312,8 +1312,12 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
         ok, msg = _run_browser_schedule(day, nr, when, timeout=300)
         if not ok:
             return _err(f"LinkedIn-planleggingen feilet: {msg}")
+        # Browser-subprosessen skrev fersk planleggingsstatus. Les den inn før
+        # verdict lagres, ellers ville den gamle manifestkopien overskrevet den.
+        mpath, manifest, idx, _ = _resolve(v, day, nr)
     else:
         store.mark_scheduled(mpath, manifest, idx, when)
+    store.mark_verdict(mpath, manifest, idx, "liked")
     planmod.mark_slot(v, day, "planlagt", draft_ref={"manifest": day, "nr": nr})
     ctx = _bunke_ctx(v, brand)
     naar = f"{when[8:10]}.{when[5:7]} kl. {when[11:16]}"
