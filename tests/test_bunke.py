@@ -358,6 +358,35 @@ def test_ja_planlegger_og_rendrer_bildet(bunke_client, monkeypatch):
     assert "![[" in md and "bilde lages når" not in md
 
 
+def test_ja_planlegger_direkte_i_linkedin_i_browsermodus(
+    bunke_client, monkeypatch
+):
+    client, _, mpath = bunke_client
+    from web import app as somemod
+
+    monkeypatch.setenv("BRANDPOST_BROWSER_ENABLED", "1")
+    monkeypatch.setenv("LINKEDIN_ENABLED", "0")
+    monkeypatch.setattr("brandpost.render.render_post",
+                        lambda *a, **k: {"png": b"\x89PNG", "how": "mock"})
+
+    def fake_schedule(day, nr, when, timeout=300):
+        manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        idx, _ = store.select_draft(manifest, str(nr))
+        store.mark_scheduled(mpath, manifest, idx, when,
+                             confirmed="fre. 14. aug. 10:00")
+        return True, "fre. 14. aug. 10:00"
+
+    monkeypatch.setattr(somemod, "_run_browser_schedule", fake_schedule)
+    r = client.post("/some/api/bunke/2026-07-31/1/like",
+                    data={"when": FRAMTID})
+    assert r.status_code == 200
+    assert "Planlagt direkte i LinkedIn" in r.text
+    d = json.loads(mpath.read_text(encoding="utf-8"))["drafts"][0]
+    assert d["verdict"] == "liked"
+    assert d["status"] == "planlagt"
+    assert d["scheduled_at"] == FRAMTID
+
+
 def test_bildefeil_mister_ikke_planleggingen(bunke_client, monkeypatch):
     """Bildekallet er det som kan ryke. Da skal datoen likevel stå, ellers har
     eieren tatt en avgjørelse som systemet glemte."""

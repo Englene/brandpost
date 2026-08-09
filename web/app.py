@@ -40,7 +40,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request  # noqa: E4
 from fastapi.responses import FileResponse, HTMLResponse  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
 
-from brandpost import brandkit, linkedin, paths  # noqa: E402
+from brandpost import brandkit, linkedin, linkedin_draft, paths  # noqa: E402
 from brandpost import carousel as carouselmod  # noqa: E402
 from brandpost import plan as planmod  # noqa: E402
 from brandpost import publisher as pubmod  # noqa: E402
@@ -317,9 +317,10 @@ def _card_ctx(v: Path, day: str, draft: dict) -> dict:
                           if str(c).strip()][-rendermod.MAX_CORRECTIONS:],
             "suggest_dt": suggest_dt, "can_schedule": can_schedule,
             "er_planlagt": er_planlagt,
-            # Planlegging er alltid mulig (det er bare et skriv). Det som kan
-            # være av, er selve API-publiseringen som skjer til avtalt tid.
-            "schedule_enabled": linkedin.load_linkedin_config().enabled}
+            # Browsermodus planlegger direkte i LinkedIn ved klikket. API-modus
+            # lagrer tidspunktet og lar publisheren sende senere.
+            "schedule_enabled": (linkedin_draft.enabled()
+                                 or linkedin.load_linkedin_config().enabled)}
 
 
 def _drafts_for_display_day(v: Path, day: str,
@@ -479,6 +480,21 @@ def api_schedule(request: Request, day: str, nr: int, when: str = Form(...)):
         return _err(f"{naar:%d.%m.%Y kl. %H:%M} er tilbake i tid. Publisher nekter "
                     f"å legge ut noe som er mer enn noen timer på etterskudd, så "
                     f"innlegget ville bare blitt liggende.")
+    if linkedin_draft.enabled():
+        if linkedin.load_linkedin_config().enabled:
+            return _err("Både browser- og API-publisering er slått på. Slå av én "
+                        "før du planlegger, ellers kan innlegget bli sendt to ganger.")
+        if draft.get("type") == "karusell":
+            return _err("Browser-planlegging støtter foreløpig bildeinnlegg, ikke "
+                        "karusell. Planlegg PDF-en manuelt eller bruk API-modus.")
+        ok, msg = _run_browser_schedule(day, nr, when, timeout=300)
+        if not ok:
+            return _err(f"LinkedIn-planleggingen feilet: {msg}")
+        _, _, _, draft2 = _resolve(v, day, nr)
+        planmod.mark_slot(v, day, "planlagt",
+                          draft_ref={"manifest": day, "nr": nr})
+        return _card_response(request, day, draft2,
+                              note=f"Planlagt direkte i LinkedIn: {msg}")
     # valget 22. juli: VI eier publiseringen. Knappen lagrer bare tidspunktet;
     # publisher-jobben legger ut via API akkurat da og sender e-post i samme
     # øyeblikk. Derfor er dette et lynkjapt skriv, ikke en nettleser-kjøring som
@@ -655,6 +671,25 @@ def _run_cli(*args: str, timeout: int = 420) -> tuple[bool, str]:
         return False, f"tidsavbrudd etter {timeout}s"
     tail = (r.stdout or r.stderr or "").strip().splitlines()
     return r.returncode == 0, (tail[-1] if tail else f"exit {r.returncode}")
+
+
+def _run_browser_schedule(day: str, nr: int, when: str, *,
+                          timeout: int = 300) -> tuple[bool, str]:
+    """Planlegg ett godkjent bildeinnlegg i LinkedIns egen nettleserplanlegger."""
+    cmd = [sys.executable, "-m", "brandpost.linkedin_draft",
+           "--date", day, "--nr", str(nr), "--schedule", when]
+    try:
+        result = subprocess.run(
+            cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"tidsavbrudd etter {timeout}s"
+    stdout = (result.stdout or "").strip().splitlines()
+    if result.returncode == 0:
+        last = stdout[-1] if stdout else "planlagt"
+        return True, last.split("—", 1)[-1].strip() if "—" in last else last
+    tail = stdout or (result.stderr or "").strip().splitlines()
+    return False, tail[-1] if tail else f"exit {result.returncode}"
 
 
 @router.post("/api/pulse/refresh", response_class=HTMLResponse)
@@ -1267,11 +1302,23 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
             store.mark_scheduled(mpath, manifest, idx, when)
             return _err(f"Planlagt, men bildet feilet: {e}. Regenerer fra kalenderen.")
 
-    store.mark_scheduled(mpath, manifest, idx, when)
+    if linkedin_draft.enabled():
+        if linkedin.load_linkedin_config().enabled:
+            return _err("Både browser- og API-publisering er slått på. Slå av én "
+                        "før du planlegger, ellers kan innlegget bli sendt to ganger.")
+        if draft.get("type") == "karusell":
+            return _err("Browser-planlegging støtter foreløpig bildeinnlegg, ikke "
+                        "karusell. Planlegg PDF-en manuelt eller bruk API-modus.")
+        ok, msg = _run_browser_schedule(day, nr, when, timeout=300)
+        if not ok:
+            return _err(f"LinkedIn-planleggingen feilet: {msg}")
+    else:
+        store.mark_scheduled(mpath, manifest, idx, when)
     planmod.mark_slot(v, day, "planlagt", draft_ref={"manifest": day, "nr": nr})
     ctx = _bunke_ctx(v, brand)
     naar = f"{when[8:10]}.{when[5:7]} kl. {when[11:16]}"
-    ctx["flash"] = f"Planlagt {naar}."
+    ctx["flash"] = (f"Planlagt direkte i LinkedIn: {msg}." if linkedin_draft.enabled()
+                    else f"Planlagt {naar}.")
     n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
     if n:
         ctx["flash"] += f" Henter {n * BUNKE_PAAFYLL} nye i bakgrunnen."

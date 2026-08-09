@@ -254,7 +254,7 @@ def test_schedule_button_vises_naar_paa(client, tmp_path, monkeypatch):
     assert f'value="{day}T10:00"' in r.text  # foreslått slot-dag kl. 10:00 (eieren 22. juli)
 
 
-def test_schedule_skriver_tidspunkt_uten_nettleser(client, tmp_path):
+def test_schedule_skriver_tidspunkt_uten_nettleser(client, tmp_path, monkeypatch):
     """valget 22. juli: VI eier publiseringen, saa knappen er et lynkjapt
     skriv. Ingen nettleser-subprosess som holder forespoerselen aapen i minutter."""
     day, nr = _make_manifest(tmp_path)
@@ -266,6 +266,43 @@ def test_schedule_skriver_tidspunkt_uten_nettleser(client, tmp_path):
     d = manifest["drafts"][0]
     assert d["status"] == "planlagt"
     assert d["scheduled_at"] == naar
+
+
+def test_schedule_bruker_linkedins_native_planlegger_i_browsermodus(
+    client, tmp_path, monkeypatch
+):
+    day, nr = _make_manifest(tmp_path)
+    naar = _frem()
+    monkeypatch.setenv("BRANDPOST_BROWSER_ENABLED", "1")
+    monkeypatch.setenv("LINKEDIN_ENABLED", "0")
+
+    def fake_schedule(d, n, when, timeout=300):
+        mpath, manifest = store.load_manifest(tmp_path, d)
+        idx, _ = store.select_draft(manifest, str(n))
+        store.mark_scheduled(mpath, manifest, idx, when,
+                             confirmed="man. 10. aug. 10:00")
+        return True, "man. 10. aug. 10:00"
+
+    monkeypatch.setattr(somemod, "_run_browser_schedule", fake_schedule)
+    r = client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": naar})
+    assert r.status_code == 200
+    assert "Planlagt direkte i LinkedIn" in r.text
+    _, manifest = store.load_manifest(tmp_path, day)
+    assert manifest["drafts"][0]["scheduled_at"] == naar
+
+
+def test_schedule_avviser_browser_og_api_samtidig(client, tmp_path, monkeypatch):
+    day, nr = _make_manifest(tmp_path)
+    monkeypatch.setenv("BRANDPOST_BROWSER_ENABLED", "1")
+    monkeypatch.setenv("LINKEDIN_ENABLED", "1")
+    monkeypatch.setattr(
+        somemod, "_run_browser_schedule",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("browseren skal ikke starte ved moduskonflikt")
+        ),
+    )
+    r = client.post(f"/some/api/draft/{day}/{nr}/schedule", data={"when": _frem()})
+    assert "sendt to ganger" in r.text
 
 
 def test_schedule_avviser_ugyldig_tidspunkt(client, tmp_path, monkeypatch):

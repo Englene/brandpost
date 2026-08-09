@@ -1,4 +1,4 @@
-"""linkedin_draft — lagre genererte SoMe-utkast som EKTE utkast i LinkedIn.
+"""linkedin_draft — lagre eller planlegg genererte SoMe-innlegg i LinkedIn.
 
 API-et har ingen utkast (se linkedin.py: «PUBLISHED is the only accepted field»),
 så dette er nettleser-automatisering (Playwright) mot en manuelt innlogget økt:
@@ -6,8 +6,9 @@ så dette er nettleser-automatisering (Playwright) mot en manuelt innlogget økt
 «Lagre som utkast». eieren reviewer, redigerer og publiserer selv i LinkedIn.
 
 Lover og valg:
-- Publiserer ALDRI. Verktøyet klikker aldri «Publiser»; eneste stiendring i
-  LinkedIn er et lagret utkast. Svarstyrt publisering (linkedin.py) er urørt.
+- Lagringsflyten klikker aldri «Publiser». Planleggingsflyten kan, etter et
+  eksplisitt godkjenningsklikk og valgt tidspunkt, klikke LinkedIns «Planlegg».
+  LinkedIn publiserer da innlegget på det valgte tidspunktet.
 - BRANDPOST_BROWSER_ENABLED=1 kreves for ekte kjøring; alt annet er dry-run som
   bare skriver hva som VILLE blitt lagret.
 - Innlogging gjør et menneske ÉN gang med `--setup` (synlig nettleser); koden
@@ -178,8 +179,8 @@ def _launch(*, headless: bool):
     from playwright.sync_api import sync_playwright
     pw = sync_playwright().start()
     ctx = pw.chromium.launch_persistent_context(
-        str(profile_dir()), headless=headless, viewport={"width": 1440, "height": 1000},
-        args=["--disable-blink-features=AutomationControlled"])
+        str(profile_dir()), headless=headless,
+        viewport={"width": 1440, "height": 1000})
     return pw, ctx
 
 
