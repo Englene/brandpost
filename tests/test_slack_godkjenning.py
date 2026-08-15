@@ -58,7 +58,7 @@ def _oppsett(tmp_path, monkeypatch, status="proposed"):
     d = tmp_path / "socials" / "2026-08-06"
     d.mkdir(parents=True)
     (d / "manifest.json").write_text(json.dumps({"drafts": [
-        {"nr": 2, "brand": "akser", "brand_name": "Akser", "headline": "H",
+        {"nr": 2, "brand": "gamma", "brand_name": "Gamma", "headline": "H",
          "body": "b", "status": status},
     ]}, ensure_ascii=False), encoding="utf-8")
     return d / "manifest.json"
@@ -72,10 +72,10 @@ def test_samme_svar_publiserer_bare_en_gang(tmp_path, monkeypatch):
     monkeypatch.setattr(sg.publisher, "publiser_ett",
                         lambda *a, **k: kalt.append(1) or {"posted": True, "url": "u"})
     monkeypatch.setattr(sg.brandkit, "load_brand",
-                        lambda k: type("B", (), {"slack_token_env": "", "name": "Akser"})())
+                        lambda k: type("B", (), {"slack_token_env": "", "name": "Gamma"})())
     monkeypatch.setattr(sg.slackmod, "read_replies",
                         lambda *a, **k: [{"ts": "111.1", "text": "publiser 2"}])
-    sg.skriv_ledger({"traader": {"999.0": {"brand": "akser", "dag": "2026-08-06",
+    sg.skriv_ledger({"traader": {"999.0": {"brand": "gamma", "dag": "2026-08-06",
                                            "kanal": "C1", "nr": [2]}}}, tmp_path)
 
     r1 = sg.les_og_publiser(vault=tmp_path)
@@ -93,10 +93,10 @@ def test_allerede_publisert_utkast_roeres_ikke(tmp_path, monkeypatch):
     monkeypatch.setattr(sg.publisher, "publiser_ett",
                         lambda *a, **k: pytest.fail("skulle ikke publisert"))
     monkeypatch.setattr(sg.brandkit, "load_brand",
-                        lambda k: type("B", (), {"slack_token_env": "", "name": "Akser"})())
+                        lambda k: type("B", (), {"slack_token_env": "", "name": "Gamma"})())
     monkeypatch.setattr(sg.slackmod, "read_replies",
                         lambda *a, **k: [{"ts": "222.2", "text": "publiser 2"}])
-    sg.skriv_ledger({"traader": {"999.0": {"brand": "akser", "dag": "2026-08-06",
+    sg.skriv_ledger({"traader": {"999.0": {"brand": "gamma", "dag": "2026-08-06",
                                            "kanal": "C1", "nr": [2]}}}, tmp_path)
 
     r = sg.les_og_publiser(vault=tmp_path)
@@ -106,10 +106,10 @@ def test_allerede_publisert_utkast_roeres_ikke(tmp_path, monkeypatch):
 def test_ukjent_nummer_feiler_uten_aa_stanse_resten(tmp_path, monkeypatch):
     _oppsett(tmp_path, monkeypatch)
     monkeypatch.setattr(sg.brandkit, "load_brand",
-                        lambda k: type("B", (), {"slack_token_env": "", "name": "Akser"})())
+                        lambda k: type("B", (), {"slack_token_env": "", "name": "Gamma"})())
     monkeypatch.setattr(sg.slackmod, "read_replies",
                         lambda *a, **k: [{"ts": "333.3", "text": "publiser 7"}])
-    sg.skriv_ledger({"traader": {"999.0": {"brand": "akser", "dag": "2026-08-06",
+    sg.skriv_ledger({"traader": {"999.0": {"brand": "gamma", "dag": "2026-08-06",
                                            "kanal": "C1", "nr": [2]}}}, tmp_path)
 
     r = sg.les_og_publiser(vault=tmp_path)
@@ -124,7 +124,7 @@ def test_forslag_krever_kanal(tmp_path, monkeypatch):
     monkeypatch.setattr(sg.brandkit, "load_brand",
                         lambda k: type("B", (), {"slack_channel": "", "name": "X",
                                                  "slack_token_env": ""})())
-    r = sg.post_forslag("akser", vault=tmp_path)
+    r = sg.post_forslag("gamma", vault=tmp_path)
     assert r["sendt"] is False and "channel" in r["reason"]
 
 
@@ -134,23 +134,23 @@ def test_forslag_tar_bare_uvurderte(tmp_path, monkeypatch):
     d = tmp_path / "socials" / "2026-08-06"
     d.mkdir(parents=True)
     (d / "manifest.json").write_text(json.dumps({"drafts": [
-        {"nr": 1, "brand": "akser", "headline": "ny", "body": "b", "status": "proposed"},
-        {"nr": 2, "brand": "akser", "headline": "vurdert", "body": "b",
+        {"nr": 1, "brand": "gamma", "headline": "ny", "body": "b", "status": "proposed"},
+        {"nr": 2, "brand": "gamma", "headline": "vurdert", "body": "b",
          "status": "proposed", "verdict": "passed"},
-        {"nr": 3, "brand": "akser", "headline": "ute", "body": "b", "status": "published"},
+        {"nr": 3, "brand": "gamma", "headline": "ute", "body": "b", "status": "published"},
         {"nr": 4, "brand": "annet", "headline": "feil merke", "body": "b",
          "status": "proposed"},
     ]}, ensure_ascii=False), encoding="utf-8")
 
     monkeypatch.setattr(sg.brandkit, "load_brand",
-                        lambda k: type("B", (), {"slack_channel": "C1", "name": "Akser",
+                        lambda k: type("B", (), {"slack_channel": "C1", "name": "Gamma",
                                                  "slack_token_env": ""})())
     sendt = {}
     monkeypatch.setattr(sg.slackmod, "send_message",
                         lambda tekst, **k: sendt.update(tekst=tekst)
                         or {"sent": True, "ts": "1.0"})
 
-    r = sg.post_forslag("akser", vault=tmp_path, dag="2026-08-06")
+    r = sg.post_forslag("gamma", vault=tmp_path, dag="2026-08-06")
     assert r["sendt"] and r["antall"] == 1
     assert "ny" in sendt["tekst"]
     for utelatt in ("vurdert", "ute", "feil merke"):

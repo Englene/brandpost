@@ -60,12 +60,12 @@ def _quadrants(path, fmt: str):
 
 
 def test_library_lastes_typet_og_avslaatt_id_avvises(tmp_path, monkeypatch):
-    d = _profile(tmp_path, "akser")
+    d = _profile(tmp_path, "gamma")
     _quadrants(d / "media" / "kart.png", "PNG")
     _library(d, "kraftkart", "kart.png", approved=False)
     monkeypatch.setenv("BRANDPOST_BRANDS_DIR", str(tmp_path))
 
-    brand = brandkit.load_brand("akser")
+    brand = brandkit.load_brand("gamma")
     assert brand.media_assets[0].id == "kraftkart"
     assert brand.media_assets[0].file_path == (d / "media" / "kart.png").resolve()
     assert brandkit.approved_media_assets(brand) == ()
@@ -74,23 +74,23 @@ def test_library_lastes_typet_og_avslaatt_id_avvises(tmp_path, monkeypatch):
 
 
 def test_media_id_kan_ikke_krysse_merker(tmp_path, monkeypatch):
-    a = _profile(tmp_path, "akser")
-    p = _profile(tmp_path, "pengefix")
+    a = _profile(tmp_path, "gamma")
+    p = _profile(tmp_path, "delta")
     _quadrants(a / "media" / "a.png", "PNG")
     _quadrants(p / "media" / "p.png", "PNG")
-    _library(a, "akser-kart", "a.png")
-    _library(p, "pengefix-graf", "p.png")
+    _library(a, "gamma-kart", "a.png")
+    _library(p, "delta-graf", "p.png")
     monkeypatch.setenv("BRANDPOST_BRANDS_DIR", str(tmp_path))
 
-    akser = brandkit.load_brand("akser")
-    with pytest.raises(ValueError, match="akser"):
-        render.render_post({"bevis_id": "pengefix-graf", "pillar": "analyse"}, brand=akser)
+    gamma = brandkit.load_brand("gamma")
+    with pytest.raises(ValueError, match="gamma"):
+        render.render_post({"bevis_id": "delta-graf", "pillar": "analyse"}, brand=gamma)
 
 
 @pytest.mark.parametrize(("suffix", "fmt"), [("png", "PNG"), ("jpg", "JPEG")])
 def test_png_og_jpeg_dekodes_uten_beskjaering_eller_ai(
         tmp_path, monkeypatch, suffix, fmt):
-    d = _profile(tmp_path, "akser")
+    d = _profile(tmp_path, "gamma")
     source = d / "media" / f"kart.{suffix}"
     _quadrants(source, fmt)
     _library(d, "kraftkart", source.name)
@@ -100,7 +100,7 @@ def test_png_og_jpeg_dekodes_uten_beskjaering_eller_ai(
 
     out = render.render_post({"bevis_id": "kraftkart", "pillar": "analyse",
                               "orientation": "kvadrat"},
-                             brand=brandkit.load_brand("akser"))
+                             brand=brandkit.load_brand("gamma"))
     image = Image.open(BytesIO(out["png"])).convert("RGB")
     assert image.size == (1080, 1350)
     assert out["how"] == "media:kraftkart"
@@ -113,12 +113,12 @@ def test_png_og_jpeg_dekodes_uten_beskjaering_eller_ai(
 
 
 def test_merkelokal_font_virker_og_traversal_nektes(tmp_path, monkeypatch):
-    d = _profile(tmp_path, "akser", library="", display_font="media/fonts/Hanken.ttf")
+    d = _profile(tmp_path, "gamma", library="", display_font="media/fonts/Hanken.ttf")
     fonts = d / "media" / "fonts"
     fonts.mkdir()
     shutil.copy2(brandkit.FONTS_DIR / "Inter.ttf", fonts / "Hanken.ttf")
     monkeypatch.setenv("BRANDPOST_BRANDS_DIR", str(tmp_path))
-    brand = brandkit.load_brand("akser")
+    brand = brandkit.load_brand("gamma")
     assert brandkit.font_path(brand.display_font) == (fonts / "Hanken.ttf").resolve()
 
     evil = _profile(tmp_path, "evil", library="", display_font="../utenfor.ttf")
@@ -128,11 +128,11 @@ def test_merkelokal_font_virker_og_traversal_nektes(tmp_path, monkeypatch):
 
 
 def test_library_path_traversal_nektes(tmp_path, monkeypatch):
-    _profile(tmp_path, "akser", library="../stjaalet.toml")
+    _profile(tmp_path, "gamma", library="../stjaalet.toml")
     (tmp_path / "stjaalet.toml").write_text("[[asset]]\n", encoding="utf-8")
     monkeypatch.setenv("BRANDPOST_BRANDS_DIR", str(tmp_path))
     with pytest.raises(ValueError, match="utenfor merkets mappe"):
-        brandkit.load_brand("akser")
+        brandkit.load_brand("gamma")
 
 
 def test_refs_mappa_leses_automatisk(tmp_path, monkeypatch):

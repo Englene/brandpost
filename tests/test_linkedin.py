@@ -151,11 +151,11 @@ def test_publish_draft_med_merke_uten_org_urn_er_fail_closed(tmp_path, monkeypat
     class Brand:
         voice_mode = "brand"
         linkedin_org_urn = ""
-        linkedin_handle = "akser"
+        linkedin_handle = "gamma"
 
     monkeypatch.setattr("brandpost.brandkit.load_brand", lambda key: Brand())
     res = linkedin.publish_draft(
-        {"brand": "akser", "headline": "H", "png_path": str(img)},
+        {"brand": "gamma", "headline": "H", "png_path": str(img)},
         cfg=_cfg(org_urn="urn:li:organization:999", enabled=False))
     assert res["posted"] is False and "mangler gyldig" in res["reason"]
     assert "preview" not in res

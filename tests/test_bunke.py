@@ -847,19 +847,19 @@ def test_karantenen_er_per_merke(tmp_path):
     """To selskaper som skriver om samme fagfelt har hver sine følgere og hver sin
     plan. At det ene har brukt en vinkel er ingen grunn til at det andre ikke kan.
 
-    Karantenen var global til 2. august 2026, og ville sperret Vitandi fra alt
-    Tilskudd.ai hadde skrevet om."""
+    Karantenen var global til 2. august 2026, og ville sperret Beta fra alt
+    Alfa AS hadde skrevet om."""
     _dag(tmp_path, "2026-07-28", [
-        {"emne": "skattefunn-frist", "brand": "tilskudd", "status": "planlagt",
+        {"emne": "skattefunn-frist", "brand": "alfa", "status": "planlagt",
          "scheduled_at": "2026-07-29T10:00"},
-        {"emne": "egen-vinkel", "brand": "vitandi", "status": "planlagt",
+        {"emne": "egen-vinkel", "brand": "beta", "status": "planlagt",
          "scheduled_at": "2026-07-29T10:00"},
     ])
-    tilskudd = store.blocked_topics(tmp_path, now=NOW, brand_key="tilskudd")
-    vitandi = store.blocked_topics(tmp_path, now=NOW, brand_key="vitandi")
+    alfa = store.blocked_topics(tmp_path, now=NOW, brand_key="alfa")
+    beta = store.blocked_topics(tmp_path, now=NOW, brand_key="beta")
 
-    assert tilskudd["hard"] == ["skattefunn-frist"]
-    assert vitandi["hard"] == ["egen-vinkel"]
+    assert alfa["hard"] == ["skattefunn-frist"]
+    assert beta["hard"] == ["egen-vinkel"]
     # uten merke: alt, som før (brukes av verktøy som vil se hele bildet)
     assert set(store.blocked_topics(tmp_path, now=NOW)["hard"]) == {
         "skattefunn-frist", "egen-vinkel"}
@@ -867,36 +867,36 @@ def test_karantenen_er_per_merke(tmp_path):
 
 def test_avviste_forslag_er_ogsaa_per_merke(tmp_path):
     _dag(tmp_path, "2026-07-30", [
-        {"headline": "Tilskudds nei", "brand": "tilskudd", "emne": "a",
+        {"headline": "Alfas nei", "brand": "alfa", "emne": "a",
          "verdict": "passed", "verdict_at": "2026-07-30T09:00"},
-        {"headline": "Vitandis nei", "brand": "vitandi", "emne": "b",
+        {"headline": "Betas nei", "brand": "beta", "emne": "b",
          "verdict": "passed", "verdict_at": "2026-07-30T09:00"},
     ])
-    ut = store.rejected_recently(tmp_path, now=NOW, brand_key="vitandi")
-    assert [x["headline"] for x in ut] == ["Vitandis nei"]
+    ut = store.rejected_recently(tmp_path, now=NOW, brand_key="beta")
+    assert [x["headline"] for x in ut] == ["Betas nei"]
 
 
 def test_tidsvelgeren_er_per_merke(tmp_path, monkeypatch):
     """To selskaper har hver sin firmaside og hver sine følgere, så at det ene
     poster mandag er ingen grunn til at det andre ikke kan. Uten merke-filter
-    blokkerte Tilskudd.ai alle datoer for Vitandi, og Vitandi kunne ikke
+    blokkerte Alfa AS alle datoer for Beta, og Beta kunne ikke
     planlegges i det hele tatt (Oscar 2. august)."""
     monkeypatch.setenv("BRANDPOST_WORKSPACE", str(tmp_path))
     from web import app as somemod
 
     forste = somemod._ledige_tider(tmp_path)[0]["verdi"][:10]
-    _dag(tmp_path, "2026-01-02", [{"headline": "Tilskudds innlegg", "brand": "tilskudd",
+    _dag(tmp_path, "2026-01-02", [{"headline": "Alfas innlegg", "brand": "alfa",
                                    "status": "planlagt",
                                    "scheduled_at": f"{forste}T10:00"}])
 
-    tilskudd = somemod._ledige_tider(tmp_path, brand_key="tilskudd")
-    vitandi = somemod._ledige_tider(tmp_path, brand_key="vitandi")
+    alfa = somemod._ledige_tider(tmp_path, brand_key="alfa")
+    beta = somemod._ledige_tider(tmp_path, brand_key="beta")
 
-    assert [t for t in tilskudd if t["verdi"][:10] == forste][0]["opptatt"] is True
-    assert [t for t in vitandi if t["verdi"][:10] == forste][0]["opptatt"] is False
-    # forvalget skal hoppe over for tilskudd, men ikke for vitandi
-    assert somemod._neste_postdag(tmp_path, "tilskudd") != forste
-    assert somemod._neste_postdag(tmp_path, "vitandi") == forste
+    assert [t for t in alfa if t["verdi"][:10] == forste][0]["opptatt"] is True
+    assert [t for t in beta if t["verdi"][:10] == forste][0]["opptatt"] is False
+    # forvalget skal hoppe over for alfa, men ikke for beta
+    assert somemod._neste_postdag(tmp_path, "alfa") != forste
+    assert somemod._neste_postdag(tmp_path, "beta") == forste
 
 
 def test_velgeren_strekker_seg_til_den_finner_ledige_dager(tmp_path, monkeypatch):
@@ -978,14 +978,14 @@ def test_vanlig_kjoering_erstatter_fortsatt(tmp_path):
 def test_andre_merker_roeres_aldri(tmp_path):
     from datetime import datetime as dt
     naa = dt(2026, 8, 2, 12, 0)
-    store.merge_manifest(tmp_path, brand_key="vitandi", brand_name="Vitandi",
-                         new_drafts=[{"brand": "vitandi", "headline": "Vitandis"}],
+    store.merge_manifest(tmp_path, brand_key="beta", brand_name="Beta",
+                         new_drafts=[{"brand": "beta", "headline": "Betas"}],
                          when=naa, replace_own=False)
     store.merge_manifest(tmp_path, brand_key="demo", brand_name="Demo",
                          new_drafts=[{"brand": "demo", "headline": "Demos"}],
                          when=naa)                      # erstatter KUN sine egne
     _, m = store.load_manifest(tmp_path, "2026-08-02")
-    assert "Vitandis" in [d["headline"] for d in m["drafts"]]
+    assert "Betas" in [d["headline"] for d in m["drafts"]]
 
 
 # ── Rediger teksten selv ─────────────────────────────────────────────────────

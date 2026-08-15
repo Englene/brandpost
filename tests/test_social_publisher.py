@@ -157,8 +157,8 @@ def test_slack_varsel_har_merkenavn_overskrift_og_lenke(tmp_path, monkeypatch):
     """Merkenavnet er hele poenget her.
 
     Publisert-eposten har det ikke, og det gikk bra så lenge én mottaker fikk
-    varsel om ett merke. En felles Slack-kanal får innlegg fra Tilskudd.ai,
-    Vitandi og den personlige profilen, og «Publisert på LinkedIn» uten avsender
+    varsel om ett merke. En felles Slack-kanal får innlegg fra Alfa AS,
+    Beta og den personlige profilen, og «Publisert på LinkedIn» uten avsender
     er ubrukelig da."""
     sendt = {}
     monkeypatch.setattr(publisher.slackmod, "send_message",
