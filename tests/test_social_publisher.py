@@ -163,11 +163,13 @@ def test_slack_varsel_har_merkenavn_overskrift_og_lenke(tmp_path, monkeypatch):
     sendt = {}
     monkeypatch.setattr(publisher.slackmod, "send_message",
                         lambda tekst, **k: sendt.update(tekst=tekst, kw=k) or {"sent": True})
-    publisher._publisert_slack(_draft(1, headline="Regenerer er dyrt"), "https://li/7")
+    # Ekte LinkedIn-URL, ellers stopper sperren varselet (og det skal den).
+    url = "https://www.linkedin.com/feed/update/urn:li:share:7491040384870072320"
+    publisher._publisert_slack(_draft(1, headline="Regenerer er dyrt"), url)
 
     assert "Demo Labs" in sendt["tekst"], "merkenavnet må være med"
     assert "Regenerer er dyrt" in sendt["tekst"]
-    assert "https://li/7" in sendt["tekst"]
+    assert url in sendt["tekst"]
 
 
 def test_slackfeil_velter_ikke_publiseringen(tmp_path, monkeypatch):
@@ -265,3 +267,30 @@ def test_merkekanal_overstyrer_den_globale(monkeypatch):
         raise ValueError("ukjent merke")
     monkeypatch.setattr(brandkit, "load_brand", _sprekk)
     assert publisher._slack_for({"brand": "finnes-ikke"}) == ("", True, "")
+
+
+def test_slack_varsler_ikke_uten_ekte_linkedin_url(monkeypatch):
+    """Varselet PÅSTÅR at noe er ute. Er lenken oppdiktet, er påstanden usann.
+
+    Skjedde 7. august 2026: en verifisering kalte _publisert_slack direkte med
+    «https://li/2» og overskriften «H», mens Slack var skrudd på i produksjon.
+    Kanalen fikk en melding om et innlegg som ikke fantes. Egen disiplin med
+    dry_run holder ikke når feilen er synlig for andre enn den som gjorde den.
+    """
+    sendt = []
+    monkeypatch.setattr(publisher.slackmod, "send_message",
+                        lambda *a, **k: sendt.append(1) or {"sent": True})
+
+    for falsk in ("https://li/2", "", "test", "http://example.com/x",
+                  "urn:li:share:123"):
+        r = publisher._publisert_slack(_draft(1), falsk)
+        assert r["sent"] is False, f"sendte varsel for {falsk!r}"
+        assert "LinkedIn-URL" in r["reason"]
+    assert sendt == [], "ingen av de falske skulle nådd Slack"
+
+    # Ekte URL-er slipper gjennom, begge formene LinkedIn bruker.
+    for ekte in ("https://www.linkedin.com/feed/update/urn:li:share:7491040384870072320",
+                 "https://linkedin.com/feed/update/urn:li:ugcPost:749104040"):
+        r = publisher._publisert_slack(_draft(1), ekte)
+        assert r.get("sent") is True, f"blokkerte ekte URL {ekte!r}"
+    assert len(sendt) == 2

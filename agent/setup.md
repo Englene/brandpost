@@ -26,6 +26,18 @@ field to that language.
 
 Work like this:
 
+0. INSTALL FIRST, before anything else. The person running this has usually
+   just downloaded the folder and has nothing installed.
+   - Check for Python 3.11+. Install it if missing.
+   - Create a virtual environment in this folder and install into it:
+     `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+   - `requirements.txt` is the right file, NOT `pip install -e .`: the plain
+     install skips the dashboard (fastapi, uvicorn, jinja2), which is the main
+     interface they will actually use.
+   - Prove it worked before moving on: `.venv/bin/python -m pytest -q` should
+     pass, and `.venv/bin/python -m brandpost.cli --help` should print usage.
+   - Every command from here on uses `.venv/bin/python`, never bare `python`.
+
 1. INTERVIEW ME, one question at a time. Not a bullet list. Give your own
    recommendation with each question, briefly justified. What you need to learn:
 

@@ -35,7 +35,7 @@ ART_FEATHER = 0.14
 # Hvor mange ganger større enn 1080×1350 slidene tegnes. LinkedIn viser en
 # dokumentpost i en egen leser som er større enn feed-bildet, og på en skjerm med
 # dobbel pikseltetthet ble 1080 px skalert opp: teksten så pikselert ut (meldt av
-# Oscar 3. august 2026 med skjermbilde av forsiden). Alt i denne fila måler seg i
+# eieren, med skjermbilde av forsiden). Alt i denne fila måler seg i
 # andeler av lerretet, så en større flate gir skarpere kanter uten å flytte noe.
 #
 # PDF-en må få samme faktor på `resolution`, ellers vokser bare SIDA i punkter i

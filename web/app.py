@@ -213,7 +213,7 @@ def _manifest_drafts_by_day(v: Path, year: int, month: int,
             if not isinstance(d, dict) or not _matcher_merke(d, merke):
                 continue
             # Kalenderen viser KUN det som faktisk skal ut, altså planlagt eller
-            # publisert (Oscar 31. juli). Uvurderte forslag hører hjemme i bunken;
+            # publisert. Uvurderte forslag hører hjemme i bunken;
             # lå de i kalenderen også, druknet de fire innleggene som er ekte
             # avtaler i tjue som bare er forslag.
             if d.get("status") not in ("planlagt", "published"):
@@ -851,7 +851,7 @@ def _opptatte_dager(v: Path, brand_key: str = "") -> dict[str, str]:
     """Dato → overskriften som alt ligger der (planlagt eller publisert).
 
     Avgrenses til ett merke. To selskaper har hver sin firmaside og hver sine
-    følgere, så at Tilskudd.ai poster mandag er ingen grunn til at Vitandi ikke
+    følgere, så at ett merke poster mandag er ingen grunn til at et annet ikke
     kan. Uten dette blokkerte det ene merket alle datoer for det andre."""
     ut: dict[str, str] = {}
     for mpath in store.socials_dir(v).glob("*/manifest.json"):

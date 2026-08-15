@@ -970,7 +970,7 @@ _VARIASJON_MERKE = (
     "«det handler ikke om X, det handler om Y»-figur. Avslutt heller "
     "med et konkret neste steg, en observasjon eller et ekte spørsmål.")
 
-# Merkevare-varianten viser til «en søknad» og «ordningene», som er Tilskudd.ai
+# Merkevare-varianten viser til eksempler fra ETT merkes fagfelt, som er
 # sitt fagfelt og meningsløst for et menneske. Verre: den ber om å avslutte med
 # «et konkret neste steg eller et ekte spørsmål», som er stikk i strid med
 # person-formens «stopp når historien er ferdig». To motstridende instruksjoner i

@@ -197,6 +197,21 @@ Den forteller tjenesten hvem som spør, og hvem regningen går til. Tre ting:
 - **Den vises bare én gang.** Kopier den med det samme. Mister du den, lager du en ny.
 - **Den koster per bruk.** Ikke et abonnement, men noen ører per bilde.
 
+### Har du fått en nøkkel av noen andre?
+
+Da hopper du over de tre første stegene under. Du skal ikke lage konto og ikke
+legge inn betaling: forbruket går på den som ga deg nøkkelen. Gå rett til punkt 4
+og lagre den lokalt.
+
+To ting du skylder den som betaler:
+
+- **Nøkkelen er deres, ikke din.** Ikke legg den i et annet prosjekt, ikke del
+  den videre, og ikke lim den inn i en chat, heller ikke i en KI-assistent.
+- **Si fra hvis du skal kjøre mye.** Bilder koster noen ører hver, men et par
+  hundre bilder er fortsatt penger noen andre betaler.
+
+Slutter du å bruke oppsettet, si fra, så kan nøkkelen trekkes tilbake.
+
 ### Slik henter du en
 
 Bildene lages av OpenAI, samme selskap som ChatGPT. Merk at dette er en **egen
@@ -229,7 +244,90 @@ ZIP-es eller legges i Git.
 
 ---
 
-## Del 5: Få det til å gå av seg selv
+## Del 5: Dine egne bilder (valgfritt)
+
+Det er **to helt ulike måter** å gi motoren bilder på, og forskjellen betyr noe.
+Blander du dem, sender du et ansikt til en bildetjeneste uten å ha ment det.
+
+### 1. Ekte bilder du vil publisere, som portretter
+
+Bilder av mennesker, produkter eller arbeid som skal ut **nøyaktig som de er**.
+De skaleres inn på merkevareflaten og sendes aldri til noen bildemodell. Ingen
+AI rører dem.
+
+Legg fila i `brands/<merket ditt>/media/`, og lag `media/library.toml`:
+
+```toml
+[[asset]]
+id = "portrett-kari"
+file = "kari.jpg"
+description = "Portrett av Kari, brukes på innlegg der hun uttaler seg."
+pillars = []
+alt_text = "Portrett av Kari Nordmann"
+approved = true
+```
+
+Bare id-er som står i denne fila kan velges. Motoren kan ikke plukke et vilkårlig
+bilde fra mappa di.
+
+> **Bilder av mennesker krever samtykke.** Personen må vite at bildet brukes i
+> markedsføring på LinkedIn. Har du ikke spurt, ikke legg det inn. Er personen
+> ikke lenger i selskapet, ta bildet ut av `library.toml`.
+
+### 2. Stileksempler modellen skal la seg inspirere av
+
+Legg dem i `brands/<merket ditt>/media/refs/`. Alt i mappa plukkes opp
+automatisk. Disse **sendes til bildetjenesten** som eksempler på uttrykk.
+
+**Aldri portretter her.** Da sender du et ansikt til en ekstern tjeneste som noe
+den skal etterligne. Bruk tidligere innlegg, fargeprøver, illustrasjonsstil.
+
+Merk at bare de fire-fem første faktisk brukes per bilde. Femti eksempler gjør
+ikke resultatet bedre; det er de første som teller. Vil du styre hvilke, list dem
+i `[media].refs` i profilen, så går de foran.
+
+> **Modellen lærer ikke av bildene.** De sendes med som eksempler hver gang.
+> Motoren blir ikke gradvis bedre av at du laster opp flere.
+
+---
+
+## Del 6: Mat den med ditt eget materiale (valgfritt)
+
+Uten dette skriver motoren ut fra merkevaren din alene, og det fungerer. Men den
+vet ingenting om hva som faktisk skjer hos dere, så innleggene blir litt
+generelle.
+
+Har du materiale liggende, rapporter, kundenotater, fagartikler, gamle
+presentasjoner, så kan motoren bruke det som råstoff.
+
+### Slik gjør du det
+
+Det er én mappe: `workspace/notes/`. Legg markdown-filer der, én per tema. Den
+**første linja er tittelen**, og de neste linjene er innholdet. Det er hele
+kontrakten.
+
+Har du PDF-er eller Word-dokumenter, be assistenten om dette:
+
+```
+Jeg har noen dokumenter jeg vil at systemet skal kunne bruke som bakgrunn.
+Konverter dem til markdown og legg dem i workspace/notes/, én fil per tema, med
+en tydelig tittel på første linje. Kutt det som ikke er relevant, og ta med tall
+og konkrete eksempler.
+```
+
+### To ting å tenke på
+
+**Destiller, ikke dump.** Motoren leser overskriften og de første linjene som
+sammendrag. Femti sider rått gir dårligere resultat enn én side med det som
+faktisk betyr noe.
+
+**Ingenting her skal være hemmelig.** Alt i `notes/` kan havne i et innlegg.
+Kundenavn, priser og interne tall hører ikke hjemme der. Vil du bruke et
+kundecase, anonymiser det først: «en kunde i bransjen» i stedet for navnet.
+
+---
+
+## Del 7: Få det til å gå av seg selv
 
 Så langt må du be om innlegg hver gang. Neste steg er at de bare dukker opp.
 

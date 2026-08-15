@@ -211,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     """To kommandoer, én per steg. Kjøres som to launchd-jobber med ulik takt:
     forslagene én gang om dagen, lesingen ofte nok til at et svar føles besvart.
 
-        python -m brandpost.slack_godkjenning --post akser
+        python -m brandpost.slack_godkjenning --post <merke>
         python -m brandpost.slack_godkjenning --les
     """
     import argparse

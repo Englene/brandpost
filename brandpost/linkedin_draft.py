@@ -68,7 +68,7 @@ def _er_person(brand_key: str) -> bool:
 
     Ukjent merke gir False, altså firmaside-oppførsel. Det er den forsiktige
     retningen: tar vi feil den veien, havner utkastet på feil firmaside og blir
-    liggende som utkast. Tar vi feil andre veien, havner firmainnhold på Oscars
+    liggende som utkast. Tar vi feil andre veien, havner firmainnhold på eierens
     personlige profil, og det er en verre feil å oppdage i etterkant.
     """
     if not brand_key:
@@ -84,7 +84,7 @@ def maal_url(draft: dict) -> str:
 
     Personlige utkast går til feeden, merkevare-utkast til firmasida. Uten dette
     skilte ingenting dem: alle utkast arvet den globale firmaside-URL-en, så et
-    personlig innlegg ville blitt lagret som et utkast på Tilskudd.ai.
+    personlig innlegg ville blitt lagret som et utkast på en firmaside.
     """
     if _er_person(draft.get("brand", "")):
         return FEED_URL

@@ -30,7 +30,7 @@ def env_files() -> list[Path]:
 
     Det finnes med vilje ingen søkesti og ingen fallback til ``cwd/.env`` eller
     motorrepoets ``.env``. En pip-installert motor kan ellers fylle manglende
-    Pengefix-verdier med Oscars LinkedIn-/API-oppsett bare fordi klonen ligger i
+    manglende verdier med et annet oppsetts LinkedIn-/API-nøkler bare fordi den
     nærheten. ``BRANDPOST_ENV_FILE`` er derfor en obligatorisk peker når en fil
     skal brukes; prosessmiljø uten fil virker fortsatt som før.
     """

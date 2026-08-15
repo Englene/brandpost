@@ -36,7 +36,18 @@ SIZE_PORTRAIT = (1080, 1350)
 
 
 def _hex(c: str) -> tuple[int, int, int]:
-    c = c.lstrip("#")
+    """«#1a2b3c» eller kortformen «#abc» til RGB.
+
+    Kortformen må med: den er gyldig CSS, og en som fyller ut en palett for
+    første gang skriver «#fff» like naturlig som «#ffffff». Uten dette krasjet
+    hele renderingen med «invalid literal for int() with base 16», som ikke
+    forteller noen hvor feilen står.
+    """
+    c = c.strip().lstrip("#")
+    if len(c) == 3:
+        c = "".join(ch * 2 for ch in c)
+    if len(c) != 6:
+        raise ValueError(f"ugyldig fargekode: {c!r} (ventet #rrggbb eller #rgb)")
     return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
@@ -58,7 +69,7 @@ def _logo_tint(pal, theme, text_rgb):
     """Farge logo-marken skal tintes til, eller None for originalfargene.
 
     Marken er merkets egen, og på lys bakgrunn skal den stå som den er. På MØRK
-    bakgrunn må den tintes, ellers forsvinner den: Vitandis palett har samme verdi
+    bakgrunn må den tintes, ellers forsvinner den: en palett kan ha samme verdi
     på `headline` og `dark`, så marken ble marineblå på marineblå og var borte
     fra kortet. Tidligere ble dette avgjort av hvilket palett-navn bakgrunnen
     hadde (`theme.bg == "headline"`), som traff ett merke og bommet på neste."""
@@ -282,8 +293,28 @@ def _draw_big_mark(img, brand, *, scale=0.44, corner="br", tint=None) -> None:
     img.alpha_composite(logo, off.get(corner, off["br"]))
 
 
+def _wordmark_font(brand, mark_h):
+    """Fonten for avsendermerket nederst på kortet.
+
+    Egen vekt, ikke den globale `bold=True` (som er 850, nesten Black). En logo
+    tegnet med tynne streker ved siden av en nesten svart tekst ser rett og slett
+    feil ut, og det er det første folk reagerer på når marken er tynn.
+
+    Merker med en tung logo beholder 850 som før; merker med en strekmark setter
+    `[fonts].wordmark_weight` lavere. 500 matcher en 2 px-strek godt.
+    """
+    f = _load_font(brand.body_font, int(mark_h * 0.84), bold=True)
+    vekt = getattr(brand, "wordmark_weight", 0)
+    if vekt:
+        try:
+            f.set_variation_by_axes([vekt])
+        except (OSError, AttributeError, ValueError):
+            pass
+    return f
+
+
 def _wordmark_width(brand, mark_h) -> int:
-    font = _load_font(brand.body_font, int(mark_h * 0.84), bold=True)
+    font = _wordmark_font(brand, mark_h)
     label = brand.wordmark or brand.name
     tw = ImageDraw.Draw(Image.new("RGB", (10, 10))).textlength(label, font=font)
     return mark_h + int(mark_h * 0.34) + int(tw)
@@ -303,7 +334,7 @@ def _draw_wordmark(img, brand, x, y, mark_h, *, text_rgb, tint=None) -> None:
         except (OSError, ValueError):
             pass
     label = brand.wordmark or brand.name
-    font = _load_font(brand.body_font, int(mark_h * 0.84), bold=True)
+    font = _wordmark_font(brand, mark_h)
     d = ImageDraw.Draw(img)
     tb = d.textbbox((0, 0), label, font=font)
     ty = y + (mark_h - (tb[3] - tb[1])) // 2 - tb[1]

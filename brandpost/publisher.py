@@ -135,6 +135,17 @@ def _publisert_slack(draft: dict, url: str, *, dry_run: bool | None = None) -> d
     kanal, varsle, token_env = _slack_for(draft)
     if not varsle:
         return {"sent": False, "dry_run": False, "reason": "merket varsler ikke i Slack"}
+    # Varselet lover at noe FAKTISK er ute. Peker ikke URL-en på LinkedIn, er
+    # påstanden usann, og meldingen er ubrukelig for den som leser den.
+    #
+    # Skjedde 7. august 2026: en verifisering kalte denne funksjonen direkte med
+    # «https://li/2» og overskriften «H». Slack var da skrudd på i produksjon, så
+    # kanalen fikk en melding om et innlegg som ikke fantes. Eieren så den før
+    # jeg gjorde. Egen disiplin med dry_run er ikke nok når feilen er synlig for
+    # andre enn den som gjorde den.
+    if not _er_linkedin_url(url):
+        return {"sent": False, "dry_run": False,
+                "reason": f"ikke en LinkedIn-URL, varsler ikke: {url or '(tom)'}"}
     headline = (draft.get("headline") or "").strip() or "(uten overskrift)"
     merke = (draft.get("brand_name") or draft.get("brand") or "").strip()
     hvem = f"*{merke}*" if merke else "Publisert"
@@ -143,6 +154,17 @@ def _publisert_slack(draft: dict, url: str, *, dry_run: bool | None = None) -> d
         tekst += f"\n{url}"
     return slackmod.send_message(tekst, channel=kanal, token_env=token_env,
                                  dry_run=dry_run)
+
+
+def _er_linkedin_url(url: str) -> bool:
+    """Peker denne URL-en faktisk på et LinkedIn-innlegg?
+
+    Bevisst streng: en tom, kort eller oppdiktet URL skal stanse varselet, ikke
+    slippe gjennom «for sikkerhets skyld». Et varsel uten fungerende lenke er
+    verre enn ingen varsel, fordi det ser ut som dokumentasjon.
+    """
+    u = (url or "").strip().lower()
+    return u.startswith(("https://www.linkedin.com/", "https://linkedin.com/"))
 
 
 def _slack_for(draft: dict) -> tuple[str, bool, str]:

@@ -300,7 +300,7 @@ def publish_draft(draft: dict, *, cfg: LinkedInConfig | None = None,
     # `_with_brand_org` faller til den globale LINKEDIN_ORG_URN når merket ikke
     # har sin egen, og for en personlig profil er den tom MED VILJE (en utfylt
     # organisasjons-URN ville gjort profilen til en firmaside). Uten denne sperren
-    # betyr det at et personlig innlegg publiseres som Tilskudd.ai, og det
+    # betyr det at et personlig innlegg publiseres som en firmaside, og det
     # oppdages først når det står på feil side.
     #
     # Personlige innlegg går via linkedin_draft.py, som lagrer et utkast i en

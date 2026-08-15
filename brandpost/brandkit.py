@@ -147,12 +147,16 @@ class Brand:
     #
     # Standard ja, fordi et firmamerke som publiserer bør være synlig for teamet.
     # Personlige profiler setter den til false: kanalen er et arbeidsverktøy, og
-    # hva Oscar legger ut på sin egen profil er ikke teamets sak.
+    # hva eieren legger ut på sin egen profil er ikke teamets sak.
     slack_varsle: bool = True
     # Navnet på miljøvariabelen med tokenet for DETTE merkets workspace
     # ([slack].token_env). Tom betyr BRANDPOST_SLACK_TOKEN. Aldri selve tokenet:
     # profile.toml ligger i git.
     slack_token_env: str = ""
+    # Fontvekt for avsendermerket nederst ([fonts].wordmark_weight). 0 = behold
+    # motorens standard (850, nesten Black). Merker med en tynn strekmark setter
+    # den lavere, ellers står en nesten svart tekst ved siden av en 2 px-strek.
+    wordmark_weight: int = 0
     # prosa-seksjoner (markdown, KUN til hjernen):
     voice: str = ""
     designstil: str = ""
@@ -258,6 +262,38 @@ def _load_media_assets(base: Path, media: dict) -> tuple[MediaAsset, ...]:
     return tuple(out)
 
 
+REF_SUFFIKS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _load_refs(d: Path, media: dict) -> tuple[Path, ...]:
+    """Stil-eksempler: alt i `media/refs/`, pluss det som er listet i profilen.
+
+    MAPPA LESES AUTOMATISK. Dokumentasjonen har alltid sagt «legg dem i
+    brands/<merke>/media/refs/», men koden leste bare en eksplisitt liste i
+    `[media].refs`. Slapp du femten bilder i mappa, så motoren null av dem, og
+    ingenting feilet. Det er nettopp den flyten en ny bruker forventer: dra inn
+    en haug med eksempler og la motoren finne dem.
+
+    Eksplisitt liste virker fortsatt, og går først, slik at et merke kan
+    prioritere bestemte eksempler. Duplikater fjernes.
+
+    NB: dette er STILREFERANSER, ikke opplæring. Bildene sendes med i hvert
+    bildekall som eksempler på uttrykk. Ingen modell trenes på dem, og de gjør
+    ikke motoren gradvis bedre over tid.
+    """
+    ut: list[Path] = []
+    for r in (media.get("refs") or []):
+        p = d / str(r)
+        if p.is_file() and p not in ut:
+            ut.append(p)
+    mappe = d / "media" / "refs"
+    if mappe.is_dir():
+        for p in sorted(mappe.iterdir()):
+            if p.suffix.lower() in REF_SUFFIKS and p.is_file() and p not in ut:
+                ut.append(p)
+    return tuple(ut)
+
+
 def _load_profile(key: str) -> Brand:
     d = brand_dir(key)
     if d is None:
@@ -291,8 +327,7 @@ def _load_profile(key: str) -> Brand:
         return str(_brand_file(d, name, what="font",
                                suffixes=(".ttf", ".otf")))
 
-    refs = tuple(p for r in (media.get("refs") or [])
-                 if (p := _mp(str(r))) is not None)
+    refs = _load_refs(d, media)
     media_assets = _load_media_assets(d, media)
     pillars = tuple(
         Pillar(id=str(p["id"]), label=str(p.get("label", p["id"])), desc=str(p.get("desc", "")))
@@ -321,6 +356,7 @@ def _load_profile(key: str) -> Brand:
         slack_channel=str((data.get("slack") or {}).get("channel", "")).strip(),
         slack_varsle=bool((data.get("slack") or {}).get("varsle", True)),
         slack_token_env=str((data.get("slack") or {}).get("token_env", "")).strip(),
+        wordmark_weight=int((data.get("fonts") or {}).get("wordmark_weight", 0) or 0),
         language=str(data.get("language", "no")).strip() or "no",
         # Ukjent verdi faller til "brand": en skrivefeil i profilen skal gi den
         # forsiktige oppførselen, ikke slå av salgssperrene i det stille.
