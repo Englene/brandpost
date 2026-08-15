@@ -1134,6 +1134,15 @@ def _cmd_run(args) -> int:
     from . import model as loop_model
     vault = _vault(args)
     brand = brandkit.load_brand(args.brand)
+    try:
+        brandkit.require_generation_ready(brand)
+    except brandkit.GenerationBlocked as exc:
+        # Sjekkes før kontekst, modellkall og skriving. Dashbordet gjør sin egen
+        # sjekk for rask beskjed, men går uansett gjennom denne kommandoen, så
+        # dette er den kanoniske porten: den holder også når en UI-preflight
+        # mangler eller profilen endres mellom klikk og bakgrunnsprosess.
+        print(f"  ⛔ generering sperret for {brand.key}: {exc}", file=sys.stderr)
+        return 2
     ctx = ctxmod.gather_context(vault, days=args.days)
     # Kun det som ER ute (publisert/planlagt) sperres; foreslåtte-men-aldri-brukte
     # vinkler går tilbake i idébanken (rettingen 22. juli).

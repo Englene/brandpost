@@ -265,6 +265,21 @@ def publiser_ett(mpath: Path, manifest: dict, idx: int, draft: dict, *,
 
     Hvert varsel har SIN EGEN try/except. Med én felles ville en død SMTP-server
     stanset Slack-meldingen, og de to har ingenting med hverandre å gjøre."""
+    # Kanonisk sperre for godkjenningsstyrte profiler. Dashbordet sjekker på
+    # forhånd for å kunne si det pent, men CLI, planlagt jobb og Slack-veien går
+    # også hit, og ingen av dem skal kunne omgå en [approval]-kontrakt.
+    #
+    # En profil som ikke lar seg laste er noe annet enn en profil som sier nei:
+    # et gammelt utkast for et merke som ikke er installert på DENNE maskinen
+    # skal publiseres som før, ikke feile hardt. GenerationBlocked arver fra
+    # ValueError, så de to kallene må stå hver for seg for ikke å svelge nei-et.
+    try:
+        _brand = brandkit.load_brand(
+            draft.get("brand") or manifest.get("brand") or "demo")
+    except (ValueError, KeyError, OSError):
+        _brand = None
+    if _brand is not None:
+        brandkit.require_generation_ready(_brand)
     res = dict(linkedin.publish_draft(draft, dry_run=dry_run))
     if not res.get("posted"):
         return res

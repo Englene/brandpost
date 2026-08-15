@@ -153,14 +153,20 @@ def merker_ctx(valgt: str) -> dict:
     """Nedtrekket oppe til høyre: hvert selskap med egen merkevareprofil. Dvalende
     merker er med (de skal kunne åpnes og fylles), men merkes, så det er tydelig
     hvorfor de er tomme."""
-    aktive = set(brandkit.enabled_brands())
     valg = [{"key": ALLE_MERKER, "navn": "Alle selskaper", "dvale": False}]
     for k in brandkit.available_brands():
         try:
-            navn = brandkit.load_brand(k).name or k
+            profil = brandkit.load_brand(k)
+            navn = profil.name or k
+            dvale = not profil.enabled
         except Exception:  # noqa: BLE001
             navn = k
-        valg.append({"key": k, "navn": navn, "dvale": k not in aktive})
+            dvale = True
+        # Dvale følger profilens egen enabled-bit, ikke BRANDPOST_BRANDS. Den
+        # variabelen velger hvilke merker installasjonen viser og kjører, og er
+        # ingen fullmakt: står den satt, så en halvferdig onboarding-profil
+        # produksjonsklar ut i nedtrekket.
+        valg.append({"key": k, "navn": navn, "dvale": dvale})
     return {"valgt": valgt, "valg": valg,
             "navn": next((m["navn"] for m in valg if m["key"] == valgt), "Alle selskaper")}
 
@@ -640,6 +646,13 @@ def api_publish(request: Request, day: str, nr: int):
     mpath, manifest, idx, draft = _resolve(v, day, nr)
     if draft.get("status") == "published":
         return _card_response(request, day, draft, note="Allerede publisert.")
+    brand_key = (draft.get("brand") or manifest.get("brand") or "demo").strip()
+    sperre = _generation_blocker(brand_key)
+    if sperre:
+        # Også dry-run er en publiseringshandling: den skriver mot LinkedIn-veien
+        # og beviser hvilken avsender innlegget ville fått. Sjekken ligger FØR
+        # publisher-kallet, så ingen token- eller API-kode berøres av et nei.
+        return _err(f"Publisering er sperret for {brand_key}: {sperre}")
     try:
         # Samme vei som den planlagte utsendelsen: publiser, marker, VARSLE. Kalte vi
         # linkedin.publish_draft direkte her, gikk innlegget ut uten e-post (feilen
@@ -767,6 +780,9 @@ def api_generate(request: Request, brand: str | None = None):
     hang dashbordet 22. juli)."""
     merke = merke_valg(brand)
     key = "demo" if merke == ALLE_MERKER else merke
+    sperre = _generation_blocker(key)
+    if sperre:
+        return _err(f"Generering er sperret for {key}: {sperre}")
     logg = paths.state_dir() / "logs" / "some-generering.log"
     try:
         logg.parent.mkdir(parents=True, exist_ok=True)
@@ -795,7 +811,16 @@ def _bunke_ctx(v: Path, brand: str | None) -> dict:
     kort = store.unjudged_drafts(v, brand_key="" if merke == ALLE_MERKER else merke)
     igjen = len(kort)
     d = kort[0] if kort else None
-    ctx: dict = {"igjen": igjen, "brand": merke, "d": None}
+    ctx: dict = {
+        "igjen": igjen,
+        "brand": merke,
+        "d": None,
+        # Dashbordet skal kunne åpne en halvferdig profil, det er der man fyller
+        # den ut. Men da må det stå hvorfor knappen ikke gjør noe, ellers leses
+        # en tom bunke som «ingenting å vurdere».
+        "generation_blocker": _generation_blocker(merke),
+        "generation_blockers": _generation_blockers_lesbare(merke),
+    }
     if d:
         # Utkastet sendes flatt, IKKE gjennom _card_ctx: den pakker utkastet inne i
         # sin egen «d»-nøkkel til draft_card.html, og bunken trenger uansett ikke
@@ -928,6 +953,52 @@ BUNKE_SAMTIDIGE = int(os.environ.get("BRANDPOST_BUNKE_SAMTIDIGE", "2"))
 BUNKE_LAAS_MAKS_S = 20 * 60
 
 
+# Sperrene fra brandkit er feltnavn, som er riktig for en feilmelding i terminalen
+# og for den som skal redigere fila. I dashbordet sitter det ofte noen som aldri
+# har åpnet en TOML-fil, så her sier vi hva punktet BETYR og lar feltnavnet stå
+# igjen i parentes, slik at det fortsatt går an å finne linja.
+SPERRE_KLARTEKST = {
+    "enabled må være true":
+        "Merket står i dvale (enabled)",
+    "approval.facts_approved må være true":
+        "Ingen har lest gjennom det som står om selskapet (facts_approved)",
+    "approval.voice_approved må være true":
+        "Tonen er ikke bekreftet (voice_approved)",
+    "approval.design_approved må være true":
+        "Utseendet på kortene er ikke bekreftet (design_approved)",
+    "approval.sources_approved må være true":
+        "Materialet den siterer fra er ikke godkjent (sources_approved)",
+    "approval.approved_by må være utfylt":
+        "Mangler navnet på den som godkjente (approved_by)",
+    "approval.approved_at må være utfylt":
+        "Mangler dato for godkjenningen (approved_at)",
+}
+
+
+def _generation_blockers_lesbare(brand: str) -> list[str]:
+    """Sperrene som en liste i klartekst, til visning. Tom liste = fri bane."""
+    rå = _generation_blocker(brand)
+    return [SPERRE_KLARTEKST.get(d, d) for d in rå.split("; ")] if rå else []
+
+
+def _generation_blocker(brand: str) -> str:
+    """Tom streng når merket kan generere, ellers en lesbar grunn til at det ikke kan.
+
+    Dette er en preflight for rask beskjed i grensesnittet. CLI-en håndhever den
+    samme kontrakten på nytt, så et direkte kall, eller en profil som endres
+    mellom klikket og bakgrunnsprosessen, fortsatt feiler lukket.
+    """
+    merke = brand if brand and brand != ALLE_MERKER else (
+        brandkit.enabled_brands() or ["demo"])[0]
+    try:
+        brandkit.require_generation_ready(brandkit.load_brand(merke))
+    except brandkit.GenerationBlocked as exc:
+        return str(exc)
+    except (ValueError, KeyError, OSError) as exc:
+        return f"profilen kan ikke valideres ({exc})"
+    return ""
+
+
 def _etterfyll_bunke(brand: str) -> bool:
     """Bestill nye forslag i bakgrunnen. Returnerer True hvis en kjøring ble startet.
 
@@ -941,6 +1012,10 @@ def _etterfyll_bunke(brand: str) -> bool:
     meetingnotes/looper/DEPLOY.md). Skal du teste påfyllet manuelt, gjør det
     gjennom dashbordet, ikke fra en ssh-økt."""
     merke = brand if brand and brand != ALLE_MERKER else (brandkit.enabled_brands() or ["demo"])[0]
+    # Automatisk påfyll er også generering. Uten dette ville bunken fylle seg
+    # selv i bakgrunnen for et merke ingen har godkjent ennå.
+    if _generation_blocker(merke):
+        return False
     laasdir = paths.state_dir() / "bunke-paafyll"
     laasdir.mkdir(parents=True, exist_ok=True)
 
@@ -1129,7 +1204,8 @@ def api_bunke_neste(request: Request, brand: str | None = None):
 def api_bunke_fyll(request: Request, brand: str | None = None):
     """«Generer nå» for tom bunke; eksplisitt menneskehandling, aldri GET-sideeffekt."""
     ctx = _bunke_ctx(vault_path(), brand)
-    n = _kanskje_etterfyll(ctx["igjen"], ctx["brand"])
+    n = (0 if ctx["generation_blocker"]
+         else _kanskje_etterfyll(ctx["igjen"], ctx["brand"]))
     if n:
         ctx["flash"] = f"Henter {n * BUNKE_PAAFYLL} nye forslag i bakgrunnen."
     ctx["fyller"] = bool(n) or _paafyll_kjorer()

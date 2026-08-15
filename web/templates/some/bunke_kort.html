@@ -12,7 +12,26 @@
     {# «Tom» og «venter på flere» ser like ut for eieren, men betyr helt ulike
        ting. Er et påfyll i gang, poller siden til det kommer, i stedet for å
        la ham tro at han er ferdig. #}
-    {% if fyller %}
+    {% if generation_blocker %}
+      <div class="border border-amber-800/70 bg-amber-950/30 rounded-2xl p-8">
+        <div class="text-3xl mb-3 text-center">🔒</div>
+        <div class="text-lg font-semibold text-amber-200 text-center">
+          Generering er sperret
+        </div>
+        <div class="text-sm text-paper/60 mt-2 text-center">
+          Merket lager ingen innlegg før noen har lest gjennom profilen.
+        </div>
+        <ul class="text-sm text-paper/70 mt-5 space-y-1.5 max-w-md mx-auto">
+          {% for grunn in generation_blockers %}
+            <li class="flex gap-2"><span class="text-amber-500/70">•</span>{{ grunn }}</li>
+          {% endfor %}
+        </ul>
+        <div class="text-xs text-paper/40 mt-5 text-center">
+          Rett opp i <code class="text-paper/60">brands/{{ brand }}/profile.toml</code>,
+          under <code class="text-paper/60">[approval]</code>.
+        </div>
+      </div>
+    {% elif fyller %}
       <div class="border border-ink-700 rounded-2xl p-10 text-center"
            hx-get="/some/api/bunke/neste?brand={{ brand }}"
            hx-trigger="every 15s"

@@ -111,6 +111,25 @@ class MediaAsset:
 
 
 @dataclass(frozen=True)
+class Approval:
+    """Eksplisitt godkjenning for profiler som har en ``[approval]``-tabell.
+
+    Profiler UTEN tabellen beholder oppførselen sin: den som allerede kjører et
+    merke i produksjon skal ikke våkne til en sperre. Men når tabellen først er
+    lagt til, er manglende eller feiltypede verdier et nei. Poenget er en ny
+    bruker som lar modellen fylle inn profilen sin: gjettede fakta om eget
+    selskap ser overbevisende ut, og går rett på en firmaside om ingen leser dem.
+    """
+
+    facts_approved: bool = False
+    voice_approved: bool = False
+    design_approved: bool = False
+    sources_approved: bool = False
+    approved_by: str = ""
+    approved_at: str = ""
+
+
+@dataclass(frozen=True)
 class Brand:
     key: str
     name: str          # hvordan merket skrives (Demo Labs)
@@ -135,6 +154,7 @@ class Brand:
     # forskjellen mellom et innlegg som leses og en annonse folk scroller forbi.
     voice_mode: str = "brand"
     enabled: bool = True             # med i enabled_brands()/nattkjøringen
+    approval: Approval | None = None  # None = eldre profil uten approval-kontrakt
     profile_dir: Path | None = None
     linkedin_org_urn: str = ""       # merkets firmaside; tom verdi stopper firmapublisering
     linkedin_handle: str = ""        # @handle som TAGGER firmasida ([linkedin].handle)
@@ -309,6 +329,34 @@ def _load_profile(key: str) -> Brand:
     fonts = data.get("fonts") or {}
     media = data.get("media") or {}
 
+    approval: Approval | None = None
+    if "approval" in data:
+        raw_approval = data["approval"]
+        if not isinstance(raw_approval, dict):
+            raise ValueError(f"{prof}: approval må være en TOML-tabell")
+
+        def _approved(field: str) -> bool:
+            # ``is True`` er strengere enn bool() med vilje: teksten "true" eller
+            # tallet 1 skal aldri gi myndighet til å publisere i selskapets navn.
+            return raw_approval.get(field) is True
+
+        def _provenance(field: str) -> str:
+            value = raw_approval.get(field)
+            return value.strip() if isinstance(value, str) else ""
+
+        approval = Approval(
+            facts_approved=_approved("facts_approved"),
+            voice_approved=_approved("voice_approved"),
+            design_approved=_approved("design_approved"),
+            sources_approved=_approved("sources_approved"),
+            approved_by=_provenance("approved_by"),
+            approved_at=_provenance("approved_at"),
+        )
+
+    raw_enabled = data.get("enabled", True)
+    if approval is not None and not isinstance(raw_enabled, bool):
+        raise ValueError(f"{prof}: enabled må være true eller false når [approval] brukes")
+
     def _mp(rel: str | None) -> Path | None:
         if not rel:
             return None
@@ -349,7 +397,8 @@ def _load_profile(key: str) -> Brand:
         refs=refs,
         media_assets=media_assets,
         wordmark=str(data.get("wordmark", "")),
-        enabled=bool(data.get("enabled", True)),
+        enabled=bool(raw_enabled),
+        approval=approval,
         profile_dir=d,
         linkedin_org_urn=str((data.get("linkedin") or {}).get("org_urn", "")).strip(),
         linkedin_handle=str((data.get("linkedin") or {}).get("handle", "")).strip().lstrip("@"),
@@ -410,6 +459,44 @@ def enabled_brands() -> list[str]:
 
 def pillar_ids(brand: Brand) -> list[str]:
     return [p.id for p in brand.pillars]
+
+
+class GenerationBlocked(ValueError):
+    """Profilen finnes, men har ikke myndighet til å generere ennå."""
+
+
+def generation_blockers(brand: Brand) -> tuple[str, ...]:
+    """Hvorfor er generering sperret for en godkjenningsstyrt profil?
+
+    BRANDPOST_BRANDS kan gjøre et dvalende merke synlig i dashbordet, men den
+    variabelen er et utvalgsfilter, ikke en fullmakt: den skal aldri kunne
+    overstyre ``enabled = false`` eller profilens egne godkjenninger.
+    """
+    # getattr, ikke punktum: testdobler av Brand mangler ofte feltet, og fravær
+    # skal bety samme kontrakt som en eldre profil uten [approval].
+    approval = getattr(brand, "approval", None)
+    if approval is None:
+        return ()
+
+    blockers: list[str] = []
+    if not brand.enabled:
+        blockers.append("enabled må være true")
+    for field in ("facts_approved", "voice_approved",
+                  "design_approved", "sources_approved"):
+        if not getattr(approval, field):
+            blockers.append(f"approval.{field} må være true")
+    if not approval.approved_by:
+        blockers.append("approval.approved_by må være utfylt")
+    if not approval.approved_at:
+        blockers.append("approval.approved_at må være utfylt")
+    return tuple(blockers)
+
+
+def require_generation_ready(brand: Brand) -> None:
+    """Nekt generering fail-closed når profilen bruker approval-kontrakten."""
+    blockers = generation_blockers(brand)
+    if blockers:
+        raise GenerationBlocked("; ".join(blockers))
 
 
 def media_asset(brand: Brand, asset_id: str) -> MediaAsset:

@@ -327,7 +327,59 @@ kundecase, anonymiser det først: «en kunde i bransjen» i stedet for navnet.
 
 ---
 
-## Del 7: Få det til å gå av seg selv
+## Del 7: Lås profilen til noen har lest gjennom den (valgfritt, men anbefalt)
+
+Her er fella som er verdt å kjenne til.
+
+Når du setter opp merket ditt, kommer assistenten til å fylle ut profilen for deg.
+Den skriver hva selskapet gjør, hvem dere er for, hva som er tonen. Mye av det blir
+riktig. Noe av det blir gjettet, fordi den ikke kunne vite bedre.
+
+Problemet er at gjetningene ikke ser ut som gjetninger. De ser ut som fakta, skrevet
+i selskapets navn, og de leses av modellen som sannhet hver gang den lager et
+innlegg. Så står det et tall eller en påstand om selskapet ditt på LinkedIn som
+ingen har sagt.
+
+Derfor kan du be systemet nekte å generere før et menneske har lest gjennom.
+
+### Slik gjør du det
+
+Legg denne blokka øverst i `brands/<ditt-merke>/profile.toml`:
+
+```toml
+[approval]
+facts_approved = false     # har du lest gjennom det som står om selskapet?
+voice_approved = false     # kjenner du deg igjen i tonen?
+design_approved = false    # ser kortene ut som dere?
+sources_approved = false   # er materialet i notes/ greit å sitere fra?
+approved_by = ""           # hvem leste gjennom
+approved_at = ""           # når
+```
+
+Så lenge noe av dette står tomt eller `false`, generer systemet ingenting for det
+merket, og publiserer ingenting. Dashbordet sier hvorfor i stedet for bare å være
+tomt. Du kan fortsatt åpne profilen og jobbe videre med den, det er jo det som er
+poenget.
+
+Når du har lest gjennom, setter du de fire til `true` og fyller inn navnet ditt og
+datoen. Da er den i drift.
+
+### To ting som er verdt å vite
+
+**Halvveis er nei.** Alle fire må stå, og både navn og dato må være fylt ut. Det er
+med vilje: en delvis godkjenning er ikke en godkjenning, og signaturen er der så du
+senere kan se hvem som sa ja og når.
+
+**Det må være ekte `true`, ikke `"true"`.** Med anførselstegn rundt er det tekst, og
+tekst teller ikke som et ja. Grunnen er at en slapp variant ville lest strengen
+`"false"` som en godkjenning.
+
+Har du ikke `[approval]` i profilen, skjer ingenting av dette. Merker som allerede
+er i drift merker ingen forskjell.
+
+---
+
+## Del 8: Få det til å gå av seg selv
 
 Så langt må du be om innlegg hver gang. Neste steg er at de bare dukker opp.
 
