@@ -127,6 +127,83 @@ def test_render_motiv_roterer_fargerolle(monkeypatch):
     assert sett == ["brand", "lys", "aksent"]
 
 
+# ── fargenavn i promptene (modeller leser ikke hex pålitelig) ──
+
+def test_fargenavn_er_beregnet_og_aldri_tomt():
+    for hexval, ventet in [("#24a03d", "grønn"), ("#1C2E3D", "marineblå"),
+                           ("#EFC94C", "gul"), ("#f3ecdb", "sand"),
+                           ("#2B2B2B", "grå"), ("#82b8a9", "salviegrønn")]:
+        navn = prompts.fargenavn(hexval)
+        assert ventet in navn, f"{hexval}: fikk {navn!r}"
+    assert prompts.fargenavn("ikke-hex") == "tonen"
+
+
+def test_prompten_setter_navn_foran_hver_hex():
+    """Rådet fra prompting-guidene: beskrivende navn gjør jobben, hexen er notat.
+    Hver hex i prompten skal derfor stå ETTER et komma-skilt fargenavn."""
+    import re
+    b = _brand_med_palett(accent="#EFC94C")
+    for rolle in ("brand", "lys", "aksent"):
+        p = prompts.content_prompt("tre søyler", brand=b, farge_rolle=rolle)
+        for hexval in set(re.findall(r"#[0-9a-fA-F]{6}", p)):
+            assert re.search(r"[a-zæøå]+, " + re.escape(hexval), p), (
+                f"rolle {rolle}: {hexval} står uten fargenavn foran")
+
+
+# ── æøå-vern på motiv-teksten ──────────────────────────────
+
+def test_tekst_surr_doemmes_riktig():
+    assert not render._er_tekst_surr("")
+    assert not render._er_tekst_surr("Søknad · kvalitet · innsending, 75,3 %")
+    assert render._er_tekst_surr("S�knad")            # erstatningstegn
+    assert render._er_tekst_surr("SÃ¸knad")           # mojibake
+    assert render._er_tekst_surr("качество")          # feil skriftsystem
+    assert not render._er_tekst_surr("café résumé")   # latinsk med aksent er ok
+
+
+def test_surr_gir_ett_nytt_forsok_med_rettelse(monkeypatch):
+    from PIL import Image as PILImage
+    kall = []
+
+    def _fanger(spec, brand, size):
+        kall.append(list(spec.get("corrections") or []))
+        return PILImage.new("RGBA", (1080, 1350), (243, 236, 219, 255))
+
+    monkeypatch.setattr(render, "engine_content", _fanger)
+    svar = iter([True])  # første bilde er surr, neste sjekkes ikke (tekst_sjekket)
+    monkeypatch.setattr(render, "_motiv_tekst_surr",
+                        lambda img: next(svar, False))
+    b = brandkit.load_brand("demo")
+    png, how = render.render_motiv({"motif": "tre søyler", "headline": "X"}, b, retries=3)
+    assert how != "template-fallback"
+    assert len(kall) == 2, "surr skal gi nøyaktig ett ekstra motorkall"
+    assert kall[0] == [] and any("æ, ø, å" in r for r in kall[1])
+
+
+def test_rent_bilde_gir_ingen_ekstra_kall(monkeypatch):
+    from PIL import Image as PILImage
+    kall = []
+    monkeypatch.setattr(render, "engine_content", lambda spec, brand, size:
+                        kall.append(1) or PILImage.new("RGBA", (1080, 1350),
+                                                       (243, 236, 219, 255)))
+    monkeypatch.setattr(render, "_motiv_tekst_surr", lambda img: False)
+    b = brandkit.load_brand("demo")
+    render.render_motiv({"motif": "tre søyler", "headline": "X"}, b, retries=3)
+    assert kall == [1]
+
+
+def test_tekstsjekk_hopper_over_uten_gemini(monkeypatch):
+    """Verifiseringen er aldri fatal: uten nøkkel/SDK svarer den bare False."""
+    from PIL import Image as PILImage
+    monkeypatch.setenv("BRANDPOST_MOTIV_TEKSTSJEKK", "1")
+    from brandpost import gemini
+    monkeypatch.setattr(gemini, "available", lambda: False)
+    img = PILImage.new("RGBA", (10, 10))
+    assert render._motiv_tekst_surr(img) is False
+    monkeypatch.setenv("BRANDPOST_MOTIV_TEKSTSJEKK", "0")
+    assert render._motiv_tekst_surr(img) is False
+
+
 # ── karusell-skins ─────────────────────────────────────────
 
 def test_karusell_skins_roterer_pa_seq():

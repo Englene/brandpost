@@ -751,6 +751,39 @@ def engine_content(spec: dict, brand: Brand, size: tuple[int, int],
     return None
 
 
+def _er_tekst_surr(tekst: str) -> bool:
+    """Ser den avleste bildeteksten ut som surr? Fanger tre feilklasser: ekte
+    erstatningstegn, klassisk utf-8-mojibake for æøå, og bokstaver fra helt andre
+    skriftsystemer (bildemodellene glir av og til over i kyrillisk/asiatisk)."""
+    if not tekst:
+        return False
+    if "�" in tekst or any(m in tekst for m in ("Ã¦", "Ã¸", "Ã¥", "Ã†", "Ã˜", "Ã…")):
+        return True
+    # Alfabetiske tegn over Latin Extended (U+02AF) hører ikke hjemme i en norsk etikett.
+    return any(c.isalpha() and ord(c) > 0x2AF for c in tekst)
+
+
+def _motiv_tekst_surr(content: Image.Image) -> bool:
+    """Les teksten i motivet tilbake med en billig visjonsmodell og døm den.
+
+    Aldri fatal: mangler nøkkel/SDK, eller feiler kallet, svarer den False og
+    bildet består. BRANDPOST_MOTIV_TEKSTSJEKK=0 skrur sjekken helt av."""
+    if os.environ.get("BRANDPOST_MOTIV_TEKSTSJEKK", "1").strip().lower() in ("0", "false", "nei"):
+        return False
+    try:
+        from . import gemini
+        if not gemini.available():
+            return False
+        return _er_tekst_surr(gemini.read_text_back(_to_png(content)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+_SURR_RETTELSE = ("Teksten/etikettene i forrige forsøk var uleselige eller feilstavet: "
+                  "skriv all tekst på korrekt norsk (æ, ø, å er egne bokstaver), "
+                  "eller dropp teksten helt.")
+
+
 def render_motiv(spec: dict, brand: Brand, size: tuple[int, int] | None = None,
                  *, retries: int = 3, seq: int = 0) -> tuple[bytes, str]:
     """Komposisjons-stien: bildemotoren (gpt-image-2 eller Gemini) lager KUN infografikk-
@@ -771,10 +804,20 @@ def render_motiv(spec: dict, brand: Brand, size: tuple[int, int] | None = None,
     # kan overstyre (dashbord-retting: «behold fargene, nytt motiv»).
     if not spec.get("farge_rolle"):
         spec = {**spec, "farge_rolle": _FARGE_ROLLER[seq % len(_FARGE_ROLLER)]}
-    for _ in range(max(1, retries)):
+    runder = max(1, retries)
+    tekst_sjekket = False
+    for forsok in range(runder):
         content = engine_content(spec, brand, size)
         if content is None:
             break
+        # Æøå-vern: les teksten i motivet tilbake ÉN gang; er den surr, får
+        # motoren nøyaktig ett nytt forsøk med rettelsen lagt på. Siste runde
+        # sjekkes aldri: et kort med skjev etikett slår et tomt tekst-kort.
+        if not tekst_sjekket and forsok < runder - 1 and _motiv_tekst_surr(content):
+            tekst_sjekket = True
+            spec = {**spec, "corrections": [*(spec.get("corrections") or []),
+                                            _SURR_RETTELSE]}
+            continue
         img = _cover_resize(content, size)
         img = _content_reflow(img, brand)   # garantert luft: aldri innhold i tittel-sonen
         _sand_fade(img, brand, top_frac=0.20, bot_frac=0.14)   # rene soner for tittel/ordmerke

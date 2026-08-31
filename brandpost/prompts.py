@@ -51,6 +51,76 @@ def lysere(hex_farge: str, andel: float = 0.35) -> str:
     return "#%02x%02x%02x" % tuple(round(v + (255 - v) * a) for v in (r, g, b))
 
 
+def _hls(hex_farge: str) -> tuple[float, float, float] | None:
+    s = (hex_farge or "").strip().lstrip("#")
+    if len(s) == 3:
+        s = "".join(ch * 2 for ch in s)
+    if len(s) != 6:
+        return None
+    try:
+        r, g, b = (int(s[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    except ValueError:
+        return None
+    import colorsys
+    return colorsys.rgb_to_hls(r, g, b)
+
+
+def fargenavn(hex_farge: str) -> str:
+    """Beskrivende norsk navn for en hex-tone, deterministisk fra hue/lys/metning.
+
+    Bildemodeller leser ikke hex-koder pålitelig: «#1A3A8F» er i praksis en
+    gjetning for motoren, mens «dyp marineblå» treffer. Derfor gjør NAVNET jobben
+    i prompten og hexen står som notat (bransjerådet høsten 2026). Navnene er
+    beregnet, aldri hardkodet per merke, så ingen identitet lekker på tvers."""
+    hls = _hls(hex_farge)
+    if hls is None:
+        return "tonen"
+    h, l, s = hls
+    grader = (h * 360) % 360
+    if l < 0.09:
+        return "nesten svart"
+    if s < 0.12:  # grå-aksen
+        if l < 0.30:
+            return "mørk kullgrå"
+        if l < 0.72:
+            return "dempet grå"
+        return "kremhvit"
+    if l > 0.84:  # svært lyse toner leses som flate, ikke farge
+        return "varm sand" if 15 <= grader <= 90 else "blek pastell"
+    if grader < 15 or grader >= 340:
+        navn = "rød"
+    elif grader < 35:
+        navn = "terrakotta-oransje"
+    elif grader < 52:
+        navn = "gyllen honninggul"
+    elif grader < 70:
+        navn = "gul"
+    elif grader < 150:
+        navn = "grønn"
+    elif grader < 180:
+        navn = "salviegrønn"
+    elif grader < 200:
+        navn = "petrolgrønn"
+    elif grader < 260:
+        navn = "marineblå" if l < 0.28 else "blå"
+    elif grader < 290:
+        navn = "lilla"
+    else:
+        navn = "rosa"
+    if l < 0.22:
+        return f"dyp mørk{navn}" if navn in ("grønn", "gul") else f"mørk {navn}"
+    if l >= 0.58:
+        return f"lys {navn}"
+    if s > 0.45:
+        return f"frisk {navn}"
+    return f"dempet {navn}"
+
+
+def med_navn(hex_farge: str) -> str:
+    """«frisk grønn, #24a03d»-formen: navnet styrer, hexen dokumenterer."""
+    return f"{fargenavn(hex_farge)}, {hex_farge}"
+
+
 def har_egen_logo(brand: Brand) -> bool:
     """Har merket en EGEN logo å bygge på? Uten den skal motoren ikke få beskjed om
     å gjenta en mark, for da låner den et annet merkes mark eller finner på en."""
@@ -88,43 +158,43 @@ def _fargehierarki(pal, lys: str, rolle: str) -> str:
         rolle = "brand"  # merket har ingen aksentfarge: fall til hovedloven
     if rolle == "lys":
         return (
-            f"FARGEHIERARKI (viktig): den LYSERE tonen av merkefargen (ca. {lys}) fyller "
+            f"FARGEHIERARKI (viktig): den LYSERE tonen av merkefargen (ca. {med_navn(lys)}) fyller "
             f"de STORE, bærende formene (søyler, blokker, andeler, kort) denne gangen, og "
-            f"den friske merkefargen ({pal.brand}) sitter KUN på det ENE viktigste "
+            f"den friske merkefargen ({med_navn(pal.brand)}) sitter KUN på det ENE viktigste "
             f"elementet (den største verdien, konklusjonen, haken), så det spretter fram. "
-            f"Aksent ({pal.shape}) er KUN en svak, sekundær bakgrunnstone på små flater, "
-            f"aldri hovedfyll. Mørk ({pal.headline}) er KUN til tekst, tynne konturer og "
-            f"negative markører, ALDRI som stor fylt flate. Ellers kun sand ({pal.bg}). "
+            f"Aksent ({med_navn(pal.shape)}) er KUN en svak, sekundær bakgrunnstone på små flater, "
+            f"aldri hovedfyll. Mørk ({med_navn(pal.headline)}) er KUN til tekst, tynne konturer og "
+            f"negative markører, ALDRI som stor fylt flate. Ellers kun sand ({med_navn(pal.bg)}). "
             f"INGEN farger utenfor paletten; avslags-markører (x, kryss) i mørk eller "
             f"dempet grå, ALDRI rødt. "
-            f"Det ENE viktigste elementet får merkefargen ({pal.brand}); alt annet stort "
+            f"Det ENE viktigste elementet får merkefargen ({med_navn(pal.brand)}); alt annet stort "
             f"fyll er den lysere tonen. Aldri flere enn ett element i merkefargen. ")
     if rolle == "aksent":
         return (
-            f"FARGEHIERARKI (viktig): merkefargen ({pal.brand}) er HOVEDFARGEN og fyller "
+            f"FARGEHIERARKI (viktig): merkefargen ({med_navn(pal.brand)}) er HOVEDFARGEN og fyller "
             f"de STORE, bærende formene (søyler, blokker, andeler, kort). Trengs en andre "
-            f"tone i samme figur, bruk en LYSERE tone av merkefargen (ca. {lys}). "
+            f"tone i samme figur, bruk en LYSERE tone av merkefargen (ca. {med_navn(lys)}). "
             f"NYTT DENNE GANGEN: nøyaktig ETT lite element (den viktigste markøren, en "
-            f"hake, ett tall-felt eller en tynn strek) settes i aksentfargen ({aksent}), "
+            f"hake, ett tall-felt eller en tynn strek) settes i aksentfargen ({med_navn(aksent)}), "
             f"så kortet får et varmt blikkfang. ALDRI mer enn ett aksent-element, og aldri "
-            f"aksent som stort fyll. Aksent-bakgrunnstonen ({pal.shape}) er KUN en svak, "
-            f"sekundær tone på små flater. Mørk ({pal.headline}) er KUN til tekst, tynne "
+            f"aksent som stort fyll. Aksent-bakgrunnstonen ({med_navn(pal.shape)}) er KUN en svak, "
+            f"sekundær tone på små flater. Mørk ({med_navn(pal.headline)}) er KUN til tekst, tynne "
             f"konturer og negative markører, ALDRI som stor fylt flate. Ellers kun sand "
             f"({pal.bg}). INGEN farger utenfor paletten; avslags-markører (x, kryss) i "
             f"mørk eller dempet grå, ALDRI rødt. "
-            f"Den STØRSTE/viktigste blokka skal ha merkefargen ({pal.brand}); en mindre, "
+            f"Den STØRSTE/viktigste blokka skal ha merkefargen ({med_navn(pal.brand)}); en mindre, "
             f"sekundær blokk kan ha den lysere tonen. Aldri motsatt. ")
     return (
-        f"FARGEHIERARKI (viktig, som nettsida): den friske merkefargen ({pal.brand}) er "
+        f"FARGEHIERARKI (viktig, som nettsida): den friske merkefargen ({med_navn(pal.brand)}) er "
         f"HOVEDFARGEN og skal fylle de STORE, bærende formene (søyler, blokker, andeler, "
         f"kort). Trengs en andre tone i samme figur, bruk en LYSERE tone av merkefargen "
-        f"(ca. {lys}), IKKE aksenttonen og IKKE den mørke. Aksent ({pal.shape}) er KUN en "
+        f"(ca. {med_navn(lys)}), IKKE aksenttonen og IKKE den mørke. Aksent ({med_navn(pal.shape)}) er KUN en "
         f"svak, sekundær bakgrunnstone på små flater, aldri hovedfyll. Mørk "
-        f"({pal.headline}) er KUN til tekst, tynne konturer og negative markører, ALDRI "
-        f"som stor fylt flate. Ellers kun sand ({pal.bg}). INGEN rød, oransje eller andre "
+        f"({med_navn(pal.headline)}) er KUN til tekst, tynne konturer og negative markører, ALDRI "
+        f"som stor fylt flate. Ellers kun sand ({med_navn(pal.bg)}). INGEN rød, oransje eller andre "
         f"farger utenfor paletten; avslags-markører (x, kryss) i mørk eller dempet grå, "
         f"ALDRI rødt. "
-        f"Den STØRSTE/viktigste blokka skal ha den friske merkefargen ({pal.brand}); en "
+        f"Den STØRSTE/viktigste blokka skal ha den friske merkefargen ({med_navn(pal.brand)}); en "
         f"mindre, sekundær blokk kan ha den lysere tonen. Aldri motsatt. ")
 
 
@@ -147,8 +217,8 @@ def content_prompt(motif: str, *, brand: Brand, size=(1080, 1350),
         grep = (
             f"SELVE GREPET (viktigst): {brand.name}s egen mark (den vedlagte logoen) er det "
             f"gjennomgående bygge-elementet. Hvert repeterende element, node, punkt, ikon-holder "
-            f"eller markør, ER marken, i logoens EGNE to toner: {pal.brand} + en LYSERE tone av "
-            f"samme (ca. {lys}). Tegn ALLTID HELE marken, samme mark igjen og igjen, aldri "
+            f"eller markør, ER marken, i logoens EGNE to toner: {med_navn(pal.brand)} + en LYSERE tone av "
+            f"samme (ca. {med_navn(lys)}). Tegn ALLTID HELE marken, samme mark igjen og igjen, aldri "
             f"forvrengt. Trenger et element en betydning (hake/kryss), sitter den inni eller ved "
             f"siden av marken. Slik leser motivet umiskjennelig som {brand.name}. ")
     else:
@@ -156,13 +226,13 @@ def content_prompt(motif: str, *, brand: Brand, size=(1080, 1350),
         # annet merkes mark eller finner på en, og innlegget bærer feil avsender.
         grep = (
             f"SELVE GREPET: enkle, nøytrale geometriske former (sirkel, rektangel med liten lik "
-            f"hjørneradius, strek) i {pal.brand} og en LYSERE tone av samme (ca. {lys}). "
+            f"hjørneradius, strek) i {med_navn(pal.brand)} og en LYSERE tone av samme (ca. {med_navn(lys)}). "
             f"{brand.name} har INGEN logo-mark her: ALDRI tegn en logo, et emblem eller en "
             f"gjentatt merke-form, og ALDRI lån en mark fra et annet merke. ")
     return (
-        f"Lag KUN selve infografikk-INNHOLDET på rolig, ENSFARGET sand ({pal.bg}) bakgrunn, "
+        f"Lag KUN selve infografikk-INNHOLDET på rolig, ENSFARGET sand ({med_navn(pal.bg)}) bakgrunn, "
         f"{fmt}. Innhold: {motif}. Det SKAL være en infografikk-enhet (bunke, rad, rutenett, "
-        f"sammenligning, liste eller sjekkliste) med FLERE elementer og noen få KORTE etiketter. "
+        f"sammenligning, liste eller sjekkliste) med FLERE elementer og noen få KORTE etiketter. Etikettene staves NØYAKTIG og på korrekt norsk (æ, ø, å er egne bokstaver, aldri ae/o/a); gjengi etikett-ord fra innholdet ORDRETT, og dropp heller en etikett enn å gjette. "
         f"{grep}MAKS 3-4 elementer/rader TOTALT (ber motivet om flere: slå sammen "
         f"eller dropp de minst viktige), og STORE luftrom mellom elementene, minst et halvt "
         f"elements høyde. Luftig og ryddig er viktigere enn komplett. "
@@ -208,11 +278,11 @@ def brand_card_prompt(motif: str, *, headline: str = "", brand: Brand,
         f"ovenfra, ALDRI en fotorealistisk scene: IKKE skrivebord, penn, notatbok, kaffekopp, "
         f"lampe, planter eller foto-skygger. En ren, flat, grafisk komposisjon med RIKT, "
         f"INFORMATIVT innhold, ikke et ensomt ikon på tom flate.\n\n"
-        f"MERKEVARE: Frisk grønn ({pal.brand}) er HOVEDFARGEN og fyller de store, bærende "
+        f"MERKEVARE: Frisk grønn ({med_navn(pal.brand)}) er HOVEDFARGEN og fyller de store, bærende "
         f"formene i motivet; trengs en andre grønntone, bruk en LYSERE tone av samme "
-        f"(ca. {lys}), IKKE aksenttonen og IKKE den mørke som stort fyll. Den mørke "
-        f"({pal.headline}) KUN til display-tekst og tynne konturer, mørkt panel "
-        f"({pal.dark}) ved behov.\n"
+        f"(ca. {med_navn(lys)}), IKKE aksenttonen og IKKE den mørke som stort fyll. Den mørke "
+        f"({med_navn(pal.headline)}) KUN til display-tekst og tynne konturer, mørkt panel "
+        f"({med_navn(pal.dark)}) ved behov.\n"
         f"FORMVETT: INGEN pille-/kapselform; avlange flater er REKTANGLER med liten, lik "
         f"hjørneradius, aldri halvsirkel-ende. Andeler tegnes som TO ATSKILTE blokker med "
         f"luft mellom (eller rutenett/ring/stablede kort), aldri én avlang form delt i to. "
@@ -220,20 +290,20 @@ def brand_card_prompt(motif: str, *, headline: str = "", brand: Brand,
         f"av sirkler. Største blokk får den friske merkegrønne, ikke den lyse tonen.\n"
         + (f"LOGOFARGE-LOV (viktigst av alt): når marken vises SOM logo/merke, har den ALLTID "
            f"originalfargene fra det vedlagte logobildet: {pal.brand} og en LYSERE tone av samme "
-           f"(ca. {lys}). ALDRI omfarget logo.\n" if egen_logo else
+           f"(ca. {med_navn(lys)}). ALDRI omfarget logo.\n" if egen_logo else
            f"INGEN LOGO: {brand.name} har ingen mark her. Tegn ALDRI en logo, et emblem eller en "
            f"gjentatt merke-form, og lån ALDRI en mark fra et annet selskap.\n")
         +
-        f"BAKGRUNN (VIKTIG, akkurat som malen/native-eksemplene): rolig varm sand ({pal.bg}). "
+        f"BAKGRUNN (VIKTIG, akkurat som malen/native-eksemplene): rolig varm sand ({med_navn(pal.bg)}). "
         + (f"De store bakgrunns-formene i hjørnene skal være selve LOGOENS former (den vedlagte "
-           f"marken) brukt STORT og abstrahert som bakgrunnskomponenter, i bleke ({pal.shape})-"
+           f"marken) brukt STORT og abstrahert som bakgrunnskomponenter, i bleke ({med_navn(pal.shape)})-"
            f"toner, delvis utenfor kanten i 2-3 hjørner. Man skal kjenne igjen logoen som selve "
            f"bakgrunnen. Enkelt og ryddig, IKKE mange små blobber. Motivet ligger rolig oppå.\n"
            f"Bruk marken som et GJENNOMGÅENDE grafisk element i illustrasjonen: f.eks. et lite "
            f"merke på hvert dokument/kort, eller som aksent, alltid i logofargene over. "
            if egen_logo else
            f"Bakgrunns-formene i hjørnene er enkle, nøytrale geometriske flater i bleke "
-           f"({pal.shape})-toner, delvis utenfor kanten i 2-3 hjørner. INGEN logo-form, verken "
+           f"({med_navn(pal.shape)})-toner, delvis utenfor kanten i 2-3 hjørner. INGEN logo-form, verken "
            f"vår eller et annet selskaps. Enkelt og ryddig. Motivet ligger rolig oppå.\n")
         + f"{tilda_line}\n\n"
         f"{head_line}Sentralt motiv: {motif}. {concept_line}"
