@@ -18,9 +18,19 @@ from PIL import Image, ImageDraw
 
 from .brandkit import Brand
 from .render import (
-    SIZE_PORTRAIT, _cover_resize, _draw_big_mark, _draw_dot_grid, _draw_wordmark,
-    _fit, _hex, _load_font, _wrap,
+    SIZE_PORTRAIT, _cover_resize, _draw_big_mark, _draw_dot_grid,
+    _draw_logo_corners, _draw_wordmark, _fit, _hex, _load_font, _pcol, _wrap,
 )
+
+# Karusell-skins, rotert per KARUSELL (seq fra samme teller som enkeltbildene),
+# aldri per slide: hele serien deler ett skin så den leses som én serie. Feltene
+# er palett-attributt-navn (samme mønster som render.Theme); `accent` faller til
+# brand for merker uten aksentfarge (render._pcol).
+SLIDE_SKINS = [
+    {"key": "sand", "bg": "bg", "dots": "brand", "kicker": "brand"},
+    {"key": "krem", "bg": "bg_alt", "dots": "accent", "kicker": "accent"},
+]
+_DEFAULT_SKIN = SLIDE_SKINS[0]
 
 # Båndet et forside-motiv får lov å vises i, som andel av høyden. Et BÅND, ikke en
 # uttonet bakgrunn: en lang gradient lar motivet skinne gjennom bak tittelen, og da
@@ -44,8 +54,9 @@ SLIDE_SCALE = max(1, int(os.environ.get("BRANDPOST_SLIDE_SCALE", "2")))
 SIZE_SLIDE = (SIZE_PORTRAIT[0] * SLIDE_SCALE, SIZE_PORTRAIT[1] * SLIDE_SCALE)
 
 
-def _canvas(brand: Brand) -> Image.Image:
-    return Image.new("RGBA", SIZE_SLIDE, (*_hex(brand.palette.bg), 255))
+def _canvas(brand: Brand, skin: dict | None = None) -> Image.Image:
+    bg_attr = (skin or _DEFAULT_SKIN)["bg"]
+    return Image.new("RGBA", SIZE_SLIDE, (*_pcol(brand.palette, bg_attr), 255))
 
 
 def _draw_body(draw, text, font, x, y, max_w, fill, *, line_gap: float = 1.42) -> int:
@@ -57,12 +68,14 @@ def _draw_body(draw, text, font, x, y, max_w, fill, *, line_gap: float = 1.42) -
     return y
 
 
-def _progress(img: Image.Image, brand: Brand, index: int, total: int) -> None:
+def _progress(img: Image.Image, brand: Brand, index: int, total: int,
+              skin: dict | None = None) -> None:
     """Fremdrifts-prikker nederst: nåværende slide fylt, resten svake."""
     if total <= 1:
         return
     w, h = img.size
     pal = brand.palette
+    skin = skin or _DEFAULT_SKIN
     d = ImageDraw.Draw(img)
     r = int(w * 0.008)
     gap = int(w * 0.032)
@@ -71,7 +84,7 @@ def _progress(img: Image.Image, brand: Brand, index: int, total: int) -> None:
     y = h - int(h * 0.06)
     for i in range(total):
         cx = x0 + i * gap
-        fill = _hex(pal.brand) if i == index else _hex(pal.shape)
+        fill = _pcol(pal, skin["dots"]) if i == index else _hex(pal.shape)
         d.ellipse([cx - r, y - r, cx + r, y + r], fill=fill)
 
 
@@ -91,9 +104,11 @@ def _lim_inn_motiv(img: Image.Image, art: Image.Image) -> None:
 
 
 def render_forside(slide: dict, brand: Brand, total: int,
-                   *, art: Image.Image | None = None) -> Image.Image:
+                   *, art: Image.Image | None = None,
+                   skin: dict | None = None) -> Image.Image:
     """Forside: stor hook-tittel + ordmerke + swipe-hint, valgfritt over et motiv."""
-    img = _canvas(brand)
+    skin = skin or _DEFAULT_SKIN
+    img = _canvas(brand, skin)
     pal = brand.palette
     w, h = img.size
     margin = int(w * 0.082)
@@ -101,7 +116,7 @@ def render_forside(slide: dict, brand: Brand, total: int,
     # samme flate, så marken vikér.
     if art is None:
         _draw_big_mark(img, brand, scale=0.46, corner="br")
-    _draw_dot_grid(img, _hex(pal.brand))
+    _draw_dot_grid(img, _pcol(pal, skin["dots"]))
     _draw_wordmark(img, brand, margin, int(h * 0.07), int(w * 0.052),
                    text_rgb=_hex(pal.headline))
 
@@ -110,7 +125,7 @@ def render_forside(slide: dict, brand: Brand, total: int,
     y = int(h * 0.27)
     if kicker:
         kf = _load_font(brand.body_font, int(w * 0.028), bold=True)
-        draw.text((margin, y), kicker.upper(), font=kf, fill=_hex(pal.brand))
+        draw.text((margin, y), kicker.upper(), font=kf, fill=_pcol(pal, skin["kicker"]))
         y += int(w * 0.055)
     title = (slide.get("heading") or slide.get("tittel") or "").strip()
     tittel_hoyde = int(h * (0.19 if art is not None else 0.40))
@@ -128,21 +143,31 @@ def render_forside(slide: dict, brand: Brand, total: int,
         _lim_inn_motiv(img, art)
     # Swipe-hint nede-venstre
     hint = _load_font(brand.body_font, int(w * 0.03), bold=True)
-    draw.text((margin, h - int(h * 0.11)), "Sveip  →", font=hint, fill=_hex(pal.brand))
+    draw.text((margin, h - int(h * 0.11)), "Sveip  →", font=hint,
+              fill=_pcol(pal, skin["kicker"]))
     return img.convert("RGB")
 
 
 def render_innhold(slide: dict, brand: Brand, *, pos: int, total: int,
-                   number: int | None = None) -> Image.Image:
+                   number: int | None = None,
+                   skin: dict | None = None) -> Image.Image:
     """Innholds-slide: stort nummer + heading + brødtekst + fremdrift.
 
     pos = slidens absolutte posisjon (0-basert, for fremdrifts-prikkene).
     number = punktets nummer (1,2,3 …), forside/cta teller ikke."""
-    img = _canvas(brand)
+    skin = skin or _DEFAULT_SKIN
+    img = _canvas(brand, skin)
     pal = brand.palette
     w, h = img.size
     margin = int(w * 0.082)
-    _draw_dot_grid(img, _hex(pal.brand), cols=5, rows=3)
+    # Blikkfang på innholds-slidene (eierens ønske aug 2026: «mer på de enkle
+    # swipesa»): den bleke logo-formen delvis utenfor kanten, vekslende bunn-
+    # hjørne per slide. Deterministisk Pillow, aldri et bildekall per slide:
+    # åtte genererte bilder leser som åtte ulike serier og koster 7-10x.
+    # Tegnes FØR teksten, så brødteksten alltid ligger over.
+    _draw_logo_corners(img, brand, alpha=0.45,
+                       corners=(("br" if pos % 2 else "bl", 0.48),))
+    _draw_dot_grid(img, _pcol(pal, skin["dots"]), cols=5, rows=3)
     _draw_wordmark(img, brand, margin, int(h * 0.07), int(w * 0.044),
                    text_rgb=_hex(pal.headline))
 
@@ -172,18 +197,19 @@ def render_innhold(slide: dict, brand: Brand, *, pos: int, total: int,
     if body:
         bf = _load_font(brand.body_font, int(w * 0.034))
         _draw_body(draw, body, bf, margin, y, int(w * 0.80), _hex(pal.ink))
-    _progress(img, brand, pos, total)
+    _progress(img, brand, pos, total, skin)
     return img.convert("RGB")
 
 
-def render_cta(slide: dict, brand: Brand) -> Image.Image:
+def render_cta(slide: dict, brand: Brand, *, skin: dict | None = None) -> Image.Image:
     """Avslutnings-slide: oppfordring + stor mark + ordmerke."""
-    img = _canvas(brand)
+    skin = skin or _DEFAULT_SKIN
+    img = _canvas(brand, skin)
     pal = brand.palette
     w, h = img.size
     margin = int(w * 0.082)
     _draw_big_mark(img, brand, scale=0.52, corner="br")
-    _draw_dot_grid(img, _hex(pal.brand))
+    _draw_dot_grid(img, _pcol(pal, skin["dots"]))
 
     draw = ImageDraw.Draw(img)
     y = int(h * 0.24)
@@ -206,12 +232,15 @@ def render_cta(slide: dict, brand: Brand) -> Image.Image:
 
 def render_slide(slide: dict, brand: Brand, *, pos: int, total: int,
                  number: int | None = None,
-                 art: Image.Image | None = None) -> Image.Image:
+                 art: Image.Image | None = None, seq: int = 0) -> Image.Image:
     """Rendr én slide etter 'kind' (forside | innhold | cta). `art` gjelder KUN
-    forsiden: innholdsslidene skal leses på to sekunder, og der leses ren tekst best."""
+    forsiden: innholdsslidene skal leses på to sekunder, og der leses ren tekst best.
+    `seq` velger skin for HELE karusellen (carousel.build_carousel sender samme
+    verdi til alle slidene)."""
+    skin = SLIDE_SKINS[seq % len(SLIDE_SKINS)]
     kind = (slide.get("kind") or "innhold").strip().lower()
     if kind == "forside":
-        return render_forside(slide, brand, total, art=art)
+        return render_forside(slide, brand, total, art=art, skin=skin)
     if kind == "cta":
-        return render_cta(slide, brand)
-    return render_innhold(slide, brand, pos=pos, total=total, number=number)
+        return render_cta(slide, brand, skin=skin)
+    return render_innhold(slide, brand, pos=pos, total=total, number=number, skin=skin)

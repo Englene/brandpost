@@ -76,8 +76,61 @@ CONCEPTS = {
 }
 
 
+def _fargehierarki(pal, lys: str, rolle: str) -> str:
+    """Fargeplasserings-loven for motivet, rotert per innlegg (render._FARGE_ROLLER).
+
+    Én låst lov ga identisk fargeplassering på hvert kort (designer-tilbakemelding
+    aug 2026: «helt samme design og fargeplassering»). Rollene flytter hvilken tone
+    som bærer de store formene, uten å slippe fremmede farger inn: alt går fortsatt
+    via merkets egen palett, aldri hardkodede hex-verdier."""
+    aksent = (getattr(pal, "accent", "") or "").strip()
+    if rolle == "aksent" and not aksent:
+        rolle = "brand"  # merket har ingen aksentfarge: fall til hovedloven
+    if rolle == "lys":
+        return (
+            f"FARGEHIERARKI (viktig): den LYSERE tonen av merkefargen (ca. {lys}) fyller "
+            f"de STORE, bærende formene (søyler, blokker, andeler, kort) denne gangen, og "
+            f"den friske merkefargen ({pal.brand}) sitter KUN på det ENE viktigste "
+            f"elementet (den største verdien, konklusjonen, haken), så det spretter fram. "
+            f"Aksent ({pal.shape}) er KUN en svak, sekundær bakgrunnstone på små flater, "
+            f"aldri hovedfyll. Mørk ({pal.headline}) er KUN til tekst, tynne konturer og "
+            f"negative markører, ALDRI som stor fylt flate. Ellers kun sand ({pal.bg}). "
+            f"INGEN farger utenfor paletten; avslags-markører (x, kryss) i mørk eller "
+            f"dempet grå, ALDRI rødt. "
+            f"Det ENE viktigste elementet får merkefargen ({pal.brand}); alt annet stort "
+            f"fyll er den lysere tonen. Aldri flere enn ett element i merkefargen. ")
+    if rolle == "aksent":
+        return (
+            f"FARGEHIERARKI (viktig): merkefargen ({pal.brand}) er HOVEDFARGEN og fyller "
+            f"de STORE, bærende formene (søyler, blokker, andeler, kort). Trengs en andre "
+            f"tone i samme figur, bruk en LYSERE tone av merkefargen (ca. {lys}). "
+            f"NYTT DENNE GANGEN: nøyaktig ETT lite element (den viktigste markøren, en "
+            f"hake, ett tall-felt eller en tynn strek) settes i aksentfargen ({aksent}), "
+            f"så kortet får et varmt blikkfang. ALDRI mer enn ett aksent-element, og aldri "
+            f"aksent som stort fyll. Aksent-bakgrunnstonen ({pal.shape}) er KUN en svak, "
+            f"sekundær tone på små flater. Mørk ({pal.headline}) er KUN til tekst, tynne "
+            f"konturer og negative markører, ALDRI som stor fylt flate. Ellers kun sand "
+            f"({pal.bg}). INGEN farger utenfor paletten; avslags-markører (x, kryss) i "
+            f"mørk eller dempet grå, ALDRI rødt. "
+            f"Den STØRSTE/viktigste blokka skal ha merkefargen ({pal.brand}); en mindre, "
+            f"sekundær blokk kan ha den lysere tonen. Aldri motsatt. ")
+    return (
+        f"FARGEHIERARKI (viktig, som nettsida): den friske merkefargen ({pal.brand}) er "
+        f"HOVEDFARGEN og skal fylle de STORE, bærende formene (søyler, blokker, andeler, "
+        f"kort). Trengs en andre tone i samme figur, bruk en LYSERE tone av merkefargen "
+        f"(ca. {lys}), IKKE aksenttonen og IKKE den mørke. Aksent ({pal.shape}) er KUN en "
+        f"svak, sekundær bakgrunnstone på små flater, aldri hovedfyll. Mørk "
+        f"({pal.headline}) er KUN til tekst, tynne konturer og negative markører, ALDRI "
+        f"som stor fylt flate. Ellers kun sand ({pal.bg}). INGEN rød, oransje eller andre "
+        f"farger utenfor paletten; avslags-markører (x, kryss) i mørk eller dempet grå, "
+        f"ALDRI rødt. "
+        f"Den STØRSTE/viktigste blokka skal ha den friske merkefargen ({pal.brand}); en "
+        f"mindre, sekundær blokk kan ha den lysere tonen. Aldri motsatt. ")
+
+
 def content_prompt(motif: str, *, brand: Brand, size=(1080, 1350),
-                   concept: str | None = None, use_tilda: bool = False) -> str:
+                   concept: str | None = None, use_tilda: bool = False,
+                   farge_rolle: str = "brand") -> str:
     """Brief for KUN innholdet (infografikk-enheten) på ensfarget sand, med tomme
     marger + hjørner. Pillow tegner rammen (logo-hjørner + headline + ordmerke) oppå,
     så tone/ramme blir deterministisk og riktig, og innholdet legges sømløst inn."""
@@ -89,6 +142,7 @@ def content_prompt(motif: str, *, brand: Brand, size=(1080, 1350),
     tilda_line = ("Tilda-maskoten kan være med som et lite, sekundært element. "
                   if use_tilda else "")
     lys = lysere(pal.brand)
+    farge_blokk = _fargehierarki(pal, lys, (farge_rolle or "brand").strip().lower())
     if har_egen_logo(brand):
         grep = (
             f"SELVE GREPET (viktigst): {brand.name}s egen mark (den vedlagte logoen) er det "
@@ -112,15 +166,10 @@ def content_prompt(motif: str, *, brand: Brand, size=(1080, 1350),
         f"{grep}MAKS 3-4 elementer/rader TOTALT (ber motivet om flere: slå sammen "
         f"eller dropp de minst viktige), og STORE luftrom mellom elementene, minst et halvt "
         f"elements høyde. Luftig og ryddig er viktigere enn komplett. "
-        f"Flat vektor. FARGEHIERARKI (viktig, som nettsida): den friske merkegrønne "
-        f"({pal.brand}) er HOVEDFARGEN og skal fylle de STORE, bærende formene (søyler, "
-        f"blokker, andeler, kort). Trengs en andre grønntone i samme figur, bruk en LYSERE "
-        f"tone av merkefargen (ca. {lys}), IKKE aksenttonen og IKKE den mørke. Aksent "
-        f"({pal.shape}) er KUN en svak, sekundær bakgrunnstone på små flater, aldri "
-        f"hovedfyll. Mørkegrønn ({pal.headline}) er KUN til tekst, tynne konturer og "
-        f"negative markører, ALDRI som stor fylt flate. Ellers kun sand ({pal.bg}). INGEN "
-        f"rød, oransje eller andre farger utenfor paletten; avslags-markører (x, kryss) i "
-        f"mørkegrønn eller dempet grå, ALDRI rødt. "
+        f"ETT grep per kort: ALDRI to ulike figurtyper i samme bilde (aldri en tidslinje OG "
+        f"søyler, aldri en liste OG et diagram): velg det ene som bærer poenget og dropp "
+        f"resten. "
+        f"Flat vektor. {farge_blokk}"
         f"FORMVETT (viktig): INGEN pille- eller kapselform. Alle avlange flater tegnes som "
         f"REKTANGLER med liten, LIK hjørneradius i alle fire hjørner, aldri med halvsirkel-"
         f"ende eller kuppel-topp. Er motivet en andel/prosent/sammenligning, tegn det som TO "
@@ -128,8 +177,6 @@ def content_prompt(motif: str, *, brand: Brand, size=(1080, 1350),
         f"eller stablede kort), ALDRI som én sammenhengende avlang form delt i to. Unngå "
         f"generelt former som kan leses anatomisk, særlig en avlang form med rund ende, og "
         f"aldri en slik form flankert av to sirkler. "
-        f"Den STØRSTE/viktigste blokka skal ha den friske merkegrønne ({pal.brand}); en "
-        f"mindre, sekundær blokk kan ha den lysere tonen. Aldri motsatt. "
         f"{concept_line}{tilda_line}"
         f"STRENGT: INGEN stor tittel/headline øverst, INGEN «{brand.wordmark}»-ordmerke, INGEN "
         f"dekorformer i hjørnene. La øverste ~28 %, nederste ~14 % og ALLE FIRE HJØRNER være "

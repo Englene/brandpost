@@ -188,9 +188,9 @@ def test_carousel_teller_kun_innholds_slides():
     import brandpost.slides as smod
     ekte = smod.render_slide
 
-    def _fanger(s, brand, *, pos, total, number=None, art=None):
+    def _fanger(s, brand, *, pos, total, number=None, art=None, seq=0):
         sett.append((s.get("kind"), number))
-        return ekte(s, brand, pos=pos, total=total, number=number, art=art)
+        return ekte(s, brand, pos=pos, total=total, number=number, art=art, seq=seq)
 
     smod.render_slide = _fanger
     try:

@@ -579,9 +579,14 @@ def api_regen_image(request: Request, day: str, nr: int, note: str = Form("")):
 
     try:
         brand = brandkit.load_brand(draft.get("brand") or "demo")
-        result = rendermod.render_post(spec, brand=brand)
+        # seq fra den persistente telleren: uten den fikk hvert dashbord-kall
+        # seq=0, altså alltid samme tema og samme motivramme (tilbakemelding
+        # aug 2026: «helt samme design og fargeplassering»).
+        result = rendermod.render_post(spec, brand=brand,
+                                       seq=store.next_theme_seq(v, brand.key))
         Path(draft["png_path"]).write_bytes(result["png"])
         draft["how"] = result.get("how", draft.get("how", ""))
+        draft["theme"] = result.get("theme", "")
         draft["alt_text"] = (result.get("alt_text") or draft.get("alt_text")
                              or draft.get("headline", ""))
         draft["spec"] = spec          # rettelsene skal overleve til neste forsøk
@@ -1274,7 +1279,9 @@ def api_bunke_nytt_bilde(request: Request, day: str, nr: int,
         merke = brandkit.load_brand(draft.get("brand") or "demo")
         spec = dict(draft.get("spec") or {})
         spec.setdefault("headline", draft.get("headline", ""))
-        result = rendermod.render_post(spec, brand=merke)
+        result = rendermod.render_post(spec, brand=merke,
+                                       seq=store.next_theme_seq(v, merke.key))
+        draft["theme"] = result.get("theme", "")
         store.attach_image(mpath, manifest, idx, result["png"],
                            alt_text=result.get("alt_text", ""))
     except Exception as e:  # noqa: BLE001
@@ -1321,7 +1328,9 @@ def api_bunke_rett(request: Request, day: str, nr: int, note: str = Form(...),
     if oppdatert.get("type") != "karusell":
         try:
             merke = brandkit.load_brand(oppdatert.get("brand") or "demo")
-            result = rendermod.render_post(dict(oppdatert.get("spec") or {}), brand=merke)
+            result = rendermod.render_post(dict(oppdatert.get("spec") or {}), brand=merke,
+                                           seq=store.next_theme_seq(v, merke.key))
+            oppdatert["theme"] = result.get("theme", "")
             store.attach_image(mpath, manifest, idx, result["png"],
                                alt_text=result.get("alt_text", ""))
         except Exception as e:  # noqa: BLE001
@@ -1368,7 +1377,9 @@ def api_bunke_like(request: Request, day: str, nr: int, when: str = Form(""),
             merke = brandkit.load_brand(draft.get("brand") or "demo")
             spec = dict(draft.get("spec") or {})
             spec.setdefault("headline", draft.get("headline", ""))
-            result = rendermod.render_post(spec, brand=merke)
+            result = rendermod.render_post(spec, brand=merke,
+                                           seq=store.next_theme_seq(v, merke.key))
+            draft["theme"] = result.get("theme", "")
             store.attach_image(mpath, manifest, idx, result["png"],
                                alt_text=result.get("alt_text", ""))
         except Exception as e:

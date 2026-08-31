@@ -26,6 +26,11 @@ piece buys you.
 1. `cp -R demo brands/<your-name>` and change the contents.
 2. `profile.toml`: set `key`, `name`, `wordmark`, `language`, the six palette hex
    values, and the `[[pillar]]` blocks. Keep `enabled = false` until you are ready.
+   Optional palette extras: `accent` (an extra tone the accent themes and the
+   rotating color roles lean on), `bg_alt` (the cream theme's canvas), and
+   `on_dark` (the color that carries kicker/subhead on the dark theme; set it
+   when your `brand` color is itself dark, or that text disappears). All three
+   fall back to `brand` when unset.
 3. Put a logo in `media/`, or delete the `[media]` section. Without a logo the
    engine degrades cleanly to typography cards.
 4. Rewrite the markdown. `voice/writing.md` and `company/products.md` are the two

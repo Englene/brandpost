@@ -27,7 +27,8 @@ from pathlib import Path
 
 from . import (bildebank, bildevalg, brandkit, carousel as carouselmod,
                context as ctxmod, email as emailmod, model, paths,
-               plan as planmod, publisher as pubmod, render as rendermod, store)
+               plan as planmod, prompts as promptsmod, publisher as pubmod,
+               render as rendermod, store)
 
 # Repo-rotens .env (nøkler og BRANDPOST_*-innstillinger). Eksplisitt sti så
 # routinen finner den uansett arbeidskatalog.
@@ -197,7 +198,10 @@ def _render_posts(vault: Path, brand, posts: list[dict],
 
     all_safe: list[dict] = []
     paths: list[Path] = []
-    bilde_seq = 0  # roterer tema for visuell variasjon over enkeltbildene
+    # Tema-/ramme-rotasjonen fortsetter der forrige kjøring slapp: telleren bor i
+    # content-state.json per merke. `bilde_seq = 0` her nullstilte rotasjonen hver
+    # natt, så kjøringer med 1-3 utkast alltid brukte de samme første temaene.
+    bilde_seq = store.next_theme_seq(vault, brand.key, count=max(1, len(posts)))
     for ds in sorted(groups):
         when = datetime.combine(datetime.strptime(ds, "%Y-%m-%d").date(), now.time())
         drafts: list[dict] = []
@@ -206,7 +210,8 @@ def _render_posts(vault: Path, brand, posts: list[dict],
             _sanitize_spec(spec, brand_name=brand.name, handle=brand.linkedin_handle,
                            wordmark=brand.wordmark)
             if (spec.get("type") or "bilde").strip().lower() == "karusell":
-                built = carouselmod.build_carousel(spec, brand=brand)
+                built = carouselmod.build_carousel(spec, brand=brand, seq=bilde_seq)
+                bilde_seq += 1
                 meta = store.write_carousel(vault, brand.key, spec, built, index=i, when=when)
                 drafts.append(meta)
                 print(f"  🎠 {ds} karusell: {built['n']} slides, {built['size_mb']} MB "
@@ -251,6 +256,7 @@ def _render_posts(vault: Path, brand, posts: list[dict],
                 bilde_seq += 1
                 meta = store.write_draft(vault, brand.key, spec, result["png"], index=i, when=when)
                 meta["how"] = result["how"]
+                meta["theme"] = result.get("theme", "")
                 drafts.append(meta)
                 tag = (spec.get("motif", "")[:34] if result["format"] in ("motiv", "redaksjonelt")
                        else spec.get("variant", "utsagn"))
@@ -464,7 +470,11 @@ _POST_SCHEMA = {
                     "format": {"type": "string", "enum": ["motiv", "typografi-kort"]},
                     "headline": {"type": "string"},
                     "motif": {"type": "string"},
-                    "concept": {"type": "string"},
+                    # Enum, ikke fri streng: alle 12 arketyper i prompts.CONCEPTS er
+                    # gyldige. Fri streng lot modellen finne på verdier som stille
+                    # falt til ingen stil-hint i content_prompt.
+                    "concept": {"type": "string",
+                                "enum": ["", *promptsmod.CONCEPTS]},
                     "pillar": {"type": "string"},
                     # Emnet er POENGET, ikke området. Pilaren er for grov til å
                     # hindre gjentak: seks pilarer mot ~17 innlegg i måneden ville
@@ -544,7 +554,9 @@ FORMATER:
   RUTENETT / SAMMENLIGNING / LISTE / SJEKKLISTE med FLERE elementer, noen få etiketter og
   interlock-marken på elementene. Rikt men luftig (ett hovedgrep + få støtte-elementer).
   MAKS 4 elementer/rader i motivet (be aldri om fem+; slå sammen heller): trange kort er
-  verre enn enkle kort. Finn ALLTID nytt. `concept`: flat/objekt/data.
+  verre enn enkle kort. Finn ALLTID nytt. `concept` velger stil-arketypen og SKAL VARIERES
+  mellom innleggene: {concepts}. Se «SISTE MOTIVER» og velg en arketype som IKKE er brukt
+  i de siste innleggene; bruk aldri samme concept to ganger i samme kjøring.
 - `tilda` (bool): SJELDEN (ca. 1 av 5-6), da bare som et lite, sekundært element, aldri fokus.
 - KARUSELL: type "karusell" (0-1 per kjøring, når stoffet bærer flere punkter): `tittel`,
   `body`, `slides` (forside + 5-8 innhold + cta).
@@ -933,6 +945,10 @@ def _modus_blokker(brand, n: int, vault=None) -> dict:
     mot «jeg» gjør ingenting hvis formkravene fortsatt beskriver en LinkedIn-mal:
     første forsøk gjorde nettopp det, og ti utkast kom ut identiske i rytme.
     """
+    # Alle 12 stil-arketyper, ikke bare tre: systemprompten sa «flat/objekt/data»
+    # lenge etter at CONCEPTS ble utvidet 22. juli, så de ni andre var død kode
+    # (talt i drift: flat 60, data 39, objekt 23, resten ~0).
+    concepts = ", ".join(f"{k} ({v})" for k, v in promptsmod.CONCEPTS.items())
     if brand.voice_mode == "person":
         return {
             "rolle": _ROLLE_PERSON.format(name=brand.name, n=n),
@@ -941,6 +957,7 @@ def _modus_blokker(brand, n: int, vault=None) -> dict:
             "faktatittel": "FAKTA OM DET DU HAR BYGGET (kontekst, ikke produktark)",
             "form_blokk": (_FORM_PERSON.format(tagg_regel=_TAGG_PERSON)
                            + _ANTI_AI + _stemmeprover(vault)),
+            "concepts": concepts,
         }
     return {
         "rolle": _ROLLE_MERKE.format(name=brand.name, n=n),
@@ -948,6 +965,7 @@ def _modus_blokker(brand, n: int, vault=None) -> dict:
         "konfidensialitet": "",
         "faktatittel": "PRODUKTFAKTA (bruk fritt som bevis, ikke finn på tall)",
         "form_blokk": _FORM_MERKE.format(tagg_regel=_TAGG_MERKE.format(name=brand.name)),
+        "concepts": concepts,
     }
 
 

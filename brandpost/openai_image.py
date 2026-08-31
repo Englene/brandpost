@@ -93,7 +93,8 @@ def generate_image(motif: str, *, headline: str = "", brand: Brand,
 
 
 def generate_content(motif: str, *, brand: Brand, size=(1080, 1350),
-                     concept: str | None = None, use_tilda: bool = False) -> bytes:
+                     concept: str | None = None, use_tilda: bool = False,
+                     farge_rolle: str = "brand") -> bytes:
     """KUN infografikk-innholdet på sand (rammen tegnes av Pillow etterpå). Sender bare
     logoen (+ evt. Tilda) som ref, IKKE frame-eksemplene (de har ramme)."""
     try:
@@ -105,7 +106,7 @@ def generate_content(motif: str, *, brand: Brand, size=(1080, 1350),
         raise OpenAIImageError("OPENAI_API_KEY mangler i .env")
     client = openai.OpenAI(api_key=key)
     prompt = prompts.content_prompt(motif, brand=brand, size=size, concept=concept,
-                                    use_tilda=use_tilda)
+                                    use_tilda=use_tilda, farge_rolle=farge_rolle)
     paths = []
     if brand.logo_path and brand.logo_path.exists():
         paths.append(brand.logo_path)

@@ -51,8 +51,16 @@ def _hex(c: str) -> tuple[int, int, int]:
     return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
+# Valgfrie palett-tokens: en tom verdi faller til brand, så et tema som leser
+# `accent`/`on_dark` virker for ALLE merker, også de som aldri satte tokenet.
+_PALETTE_FALLBACKS = {"accent": "brand", "on_dark": "brand"}
+
+
 def _pcol(pal, attr: str) -> tuple[int, int, int]:
-    return _hex(getattr(pal, attr))
+    raw = getattr(pal, attr, "") or ""
+    if not raw:
+        raw = getattr(pal, _PALETTE_FALLBACKS[attr])
+    return _hex(raw)
 
 
 def _er_mork(rgb: tuple[int, int, int]) -> bool:
@@ -126,9 +134,12 @@ THEMES = [
           mark_corner="bl", mark_scale=0.42, mark_tint=None,
           accent="quarter", accent_corner="tr", accent_col="shape", dot_alpha=255,
           align="left", wordmark="tl", band=None, text_top=0.25, text_bottom=0.72),
-    Theme("mork", bg="dark", fg="bg", fg2="brand", kicker="brand",
-          mark_corner="br", mark_scale=0.44, mark_tint="brand",
-          accent="dots", accent_corner="tr", accent_col="brand", dot_alpha=120,
+    # on_dark, ikke brand: på mørk flate må kicker/subhead ha en tone som faktisk
+    # lyser. For merker med lys brand er det samme farge (fallback); for merker
+    # der brand SELV er mørk (Vitandi: marineblå) var teksten usynlig på panelet.
+    Theme("mork", bg="dark", fg="bg", fg2="on_dark", kicker="on_dark",
+          mark_corner="br", mark_scale=0.44, mark_tint="on_dark",
+          accent="dots", accent_corner="tr", accent_col="on_dark", dot_alpha=120,
           align="left", wordmark="tl", band=None, text_top=0.24, text_bottom=0.70),
     Theme("sentrert", bg="bg", fg="headline", fg2="brand", kicker="brand",
           mark_corner="br", mark_scale=0.30, mark_tint=None,
@@ -138,6 +149,25 @@ THEMES = [
           mark_corner="br", mark_scale=0.26, mark_tint="bg",
           accent="dots", accent_corner="tr", accent_col="brand", dot_alpha=130,
           align="left", wordmark="bottom", band="brand", text_top=0.20, text_bottom=0.60),
+    # Aksent-temaene (aug 2026, etter designer-tilbakemelding om at kortene var
+    # for like): samme ramme-språk, men aksentfargen bærer kicker/subhead eller
+    # flaten. For merker uten accent-token faller aksent til brand, og temaene
+    # leser da som milde varianter av sand-temaene i stedet for å feile.
+    # fg2 er ink, ikke accent: subhead er løpende tekst og må være lesbar for
+    # ETHVERT merke (gull på krem er f.eks. for svakt). Aksenten bærer kicker
+    # og kvartsirkelen i stedet.
+    Theme("sand-aksent", bg="bg", fg="headline", fg2="ink", kicker="accent",
+          mark_corner="br", mark_scale=0.38, mark_tint=None,
+          accent="quarter", accent_corner="tr", accent_col="accent", dot_alpha=255,
+          align="left", wordmark="tl", band=None, text_top=0.24, text_bottom=0.70),
+    Theme("krem", bg="bg_alt", fg="headline", fg2="brand", kicker="accent",
+          mark_corner="bl", mark_scale=0.42, mark_tint=None,
+          accent="dots", accent_corner="tr", accent_col="accent", dot_alpha=170,
+          align="left", wordmark="tl", band=None, text_top=0.25, text_bottom=0.72),
+    Theme("blokk-aksent", bg="bg", fg="headline", fg2="brand", kicker="accent",
+          mark_corner="br", mark_scale=0.26, mark_tint="bg",
+          accent="dots", accent_corner="tr", accent_col="accent", dot_alpha=150,
+          align="left", wordmark="bottom", band="accent", text_top=0.20, text_bottom=0.60),
 ]
 THEME_MAP = {t.key: t for t in THEMES}
 
@@ -617,10 +647,17 @@ def _normalize(s: str) -> str:
     return re.sub(r"[^a-zæøå0-9]", "", (s or "").lower())
 
 
-_MOTIV_FRAMES = [  # roteres per innlegg (seq): to-tone-mark i ett bunn-hjørne + bleik salvie diagonalt
+_MOTIV_FRAMES = [  # roteres per innlegg (seq): to-tone-mark i ett bunn-hjørne + bleik salvie-form
     {"mark": "br", "soft": "tl"},
     {"mark": "bl", "soft": "tr"},
+    {"mark": "br", "soft": "tr"},
+    {"mark": "bl", "soft": "tl"},
 ]
+
+# Fargeroller for motiv-prompten, rotert per innlegg (seq). "brand" er dagens lov
+# (merkefargen fyller de store formene); de to andre snur hierarkiet, så to
+# infografikker etter hverandre ikke har identisk fargeplassering.
+_FARGE_ROLLER = ["brand", "lys", "aksent"]
 
 
 def image_backend(spec: dict) -> str:
@@ -701,7 +738,8 @@ def engine_content(spec: dict, brand: Brand, size: tuple[int, int],
         try:
             raw = engine.generate_content(motif, brand=brand, size=size,
                                           concept=spec.get("concept"),
-                                          use_tilda=bool(spec.get("tilda")))
+                                          use_tilda=bool(spec.get("tilda")),
+                                          farge_rolle=spec.get("farge_rolle") or "brand")
             return Image.open(BytesIO(raw)).convert("RGBA")
         except Exception as e:  # noqa: BLE001
             siste = f"{type(e).__name__}: {e}"
@@ -728,6 +766,11 @@ def render_motiv(spec: dict, brand: Brand, size: tuple[int, int] | None = None,
     if not motif:
         return render_template(spec, brand, size, seq=seq), "template-fallback"
     backend = image_backend(spec)
+    # Fargerollen roterer uavhengig av ramme (seq % 4) og tema (seq % 8), så to
+    # innlegg sjelden deler både ramme OG fargeplassering. spec['farge_rolle']
+    # kan overstyre (dashbord-retting: «behold fargene, nytt motiv»).
+    if not spec.get("farge_rolle"):
+        spec = {**spec, "farge_rolle": _FARGE_ROLLER[seq % len(_FARGE_ROLLER)]}
     for _ in range(max(1, retries)):
         content = engine_content(spec, brand, size)
         if content is None:

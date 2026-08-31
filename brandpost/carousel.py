@@ -45,12 +45,15 @@ def forside_motiv(spec: dict, brand: Brand):
     return render.engine_content(spec, brand, slides.SIZE_PORTRAIT)
 
 
-def build_carousel(spec: dict, *, brand: Brand | None = None, art=None) -> dict:
+def build_carousel(spec: dict, *, brand: Brand | None = None, art=None,
+                   seq: int = 0) -> dict:
     """Rendr alle slides og montér til én PDF. Returnerer
     {pdf, slide_pngs, cover, n, tittel, size_mb}.
 
     `art` er et ferdig forside-motiv. Uten det hentes ett fra spec-ens `motif`;
-    har spec-en heller ikke motiv, koster karusellen null bildekall som før."""
+    har spec-en heller ikke motiv, koster karusellen null bildekall som før.
+    `seq` roterer karusellens skin (sand/krem), samme teller som enkeltbildene:
+    hele serien får ETT skin, aldri per slide, så den fortsatt leses som én serie."""
     b = brand or brandkit.load_brand(spec.get("brand", "demo"))
     slide_specs = spec.get("slides") or []
     if not slide_specs:
@@ -67,7 +70,7 @@ def build_carousel(spec: dict, *, brand: Brand | None = None, art=None) -> dict:
             point += 1
             number = point
         images.append(slides.render_slide(s, b, pos=pos, total=total, number=number,
-                                          art=art))
+                                          art=art, seq=seq))
 
     buf = BytesIO()
     # Følger slidenes oppløsning: uten dette ville en 2x-slide gitt en PDF-side som er

@@ -69,8 +69,11 @@ BRANDS_DIR = BUNDLED_BRANDS_DIR
 
 # ───────────────────────────────────────────────────────────
 # Tokens. Kortene = sand bakgrunn + mørkegrønn Fraunces-headline, salvie-grønne
-# organiske former, grønn interlock-logo. bg_alt/shape_soft/accent er lite brukt
-# (accent = oransje kun på nett), så de har defaults; profiler oppgir de 6 brukte.
+# organiske former, grønn interlock-logo. bg_alt/shape_soft har defaults;
+# profiler oppgir de 6 brukte. accent/on_dark er TOMME som default: en tom verdi
+# faller til `brand` i rendereren (render._pcol), så et merke uten aksentfarge
+# aldri arver en annens. Den gamle defaulten (#f95f10 oransje) fulgte ellers med
+# til ethvert merke som ikke satte den, også der designstilen forbyr oransje.
 # ───────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -81,9 +84,11 @@ class Palette:
     brand: str         # primær/aksent-grønn (logo/kicker/subhead) = nettsidas --amber-500 #24a03d
     shape: str         # salvie-grønn organisk form
     dark: str          # mørkt panel-bakgrunn (mørk-tema) = nettsidas #2B2B2B
-    bg_alt: str = "#f7f3ea"       # sekundær flate (lite brukt)
+    bg_alt: str = "#f7f3ea"       # sekundær flate (krem-temaet)
     shape_soft: str = "#e4eee8"   # lysere form/linje (lite brukt)
-    accent: str = "#f95f10"       # oransje, sparsom, kun på nett
+    accent: str = ""              # valgfri tilleggsfarge for rullering ("" -> brand)
+    on_dark: str = ""             # fargen som bærer kicker/subhead på mørk flate ("" -> brand);
+                                  # trengs når brand selv er mørk (Vitandi: marineblå på marineblå)
 
 
 @dataclass(frozen=True)

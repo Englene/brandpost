@@ -52,14 +52,36 @@ def load_state(vault: Path | None = None) -> dict:
 
 
 def recent_angles(vault: Path | None = None, n: int = 14) -> list[dict]:
-    """De n siste (format, headline, motif, pillar)-radene: mates til runbooken for å
-    unngå gjentak av BÅDE vinkel og visuelt motiv."""
+    """De n siste (format, headline, motif, pillar, concept)-radene: mates til runbooken
+    for å unngå gjentak av BÅDE vinkel, visuelt motiv og stil-arketype."""
     posts = load_state(vault).get("posts", [])
     return [
         {"format": p.get("format"), "headline": p.get("headline"),
-         "motif": p.get("motif", ""), "pillar": p.get("pillar", "")}
+         "motif": p.get("motif", ""), "pillar": p.get("pillar", ""),
+         "concept": p.get("concept", "")}
         for p in posts[-n:]
     ]
+
+
+def next_theme_seq(vault: Path | None = None, brand_key: str = "", count: int = 1) -> int:
+    """Reservér `count` tema-sekvensnumre for merket og returner det første.
+
+    Telleren bor i content-state.json og OVERLEVER kjøringer. Før dette startet
+    hver kjøring (og hvert dashbord-kall) på 0, så nattkjøringens 1-3 utkast
+    brukte alltid de samme første temaene, og dashbordets «ja»/«nytt bilde»
+    rendret alltid tema 0. Det var hovedårsaken til at kortene så like ut
+    (designer-tilbakemelding aug 2026)."""
+    state = load_state(vault)
+    seqs = state.get("theme_seq")
+    if not isinstance(seqs, dict):
+        seqs = {}
+    start = int(seqs.get(brand_key) or 0)
+    seqs[brand_key] = start + max(1, int(count))
+    state["theme_seq"] = seqs
+    state_path = _state_path(_vault(vault))
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(state_path, state)
+    return start
 
 
 # Tankestrek-sanering. Bor HER fordi både innleggs-saneringen (cli) og
@@ -194,6 +216,7 @@ def write_draft(vault: Path | None, brand_key: str, spec: dict, png: bytes | Non
         "brand": brand_key, "format": fmt, "headline": headline,
         "motif": (spec.get("motif") or "").strip(),
         "pillar": (spec.get("pillar") or "").strip(),
+        "concept": (spec.get("concept") or "").strip(),
         "emne": emne,
         "png_path": str(png_path) if png is not None else "",
         "md_path": str(md_path),
@@ -270,6 +293,8 @@ def record(vault: Path | None, drafts: list[dict], *, when: datetime | None = No
             "brand": d.get("brand"), "format": d.get("format"),
             "headline": d.get("headline"), "motif": (d.get("motif") or "")[:140],
             "pillar": d.get("pillar", ""),
+            "concept": d.get("concept", ""),
+            "theme": d.get("theme", ""),
             "emne": d.get("emne", ""),
             "date": when.strftime("%Y-%m-%d"),
         })
