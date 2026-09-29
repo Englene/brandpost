@@ -182,6 +182,12 @@ class Brand:
     # motorens standard (850, nesten Black). Merker med en tynn strekmark setter
     # den lavere, ellers står en nesten svart tekst ved siden av en 2 px-strek.
     wordmark_weight: int = 0
+    # Modellen som skriver DETTE merkets tekster ([model].text): generering,
+    # retting og slide-omskriving. Tom betyr BRANDPOST_MODEL. Per merke fordi et
+    # menneske og et firma stiller ulike krav: den personlige stemmen tåler ingen
+    # maskinklang, mens firmaformelen er formel med vilje og går fint på en raskere
+    # og billigere modell.
+    text_model: str = ""
     # prosa-seksjoner (markdown, KUN til hjernen):
     voice: str = ""
     designstil: str = ""
@@ -411,6 +417,7 @@ def _load_profile(key: str) -> Brand:
         slack_varsle=bool((data.get("slack") or {}).get("varsle", True)),
         slack_token_env=str((data.get("slack") or {}).get("token_env", "")).strip(),
         wordmark_weight=int((data.get("fonts") or {}).get("wordmark_weight", 0) or 0),
+        text_model=str((data.get("model") or {}).get("text", "")).strip(),
         language=str(data.get("language", "no")).strip() or "no",
         # Ukjent verdi faller til "brand": en skrivefeil i profilen skal gi den
         # forsiktige oppførselen, ikke slå av salgssperrene i det stille.

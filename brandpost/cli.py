@@ -718,12 +718,6 @@ _PERSON_REGLER = """
 Sett `bildetype`. Et EKTE bilde som dokumenterer noe slår ren tekst, men et
 designet kort er verre enn ingenting: du er en person, ikke en kampanje.
 
-- `utdrag` FØRSTEVALGET, og undervurdert. Skriver innlegget om noe som finnes som
-  tekst, så VIS den teksten. Sier du «utkastet var stilt opp med ett poeng per
-  avsnitt», legg de faktiske linjene i `utdrag.tekst` så leseren ser det selv. Da
-  blir påstanden håndfast i stedet for en beskrivelse, og folk lagrer innlegg de
-  kan kjenne igjen mønsteret fra senere. `utdrag.tittel` er en kort etikett,
-  `utdrag.fotnote` sier hvor det er fra.
 - `bevis` når et av eierens egne skjermbilder i BILDEKANDIDATER passer. Sett
   `bevis_id` til id-en derfra. Aldri gjett en id.
 - `nettkilde` når innlegget bygger på en påstand fra en navngitt nettside OG du
@@ -1011,9 +1005,11 @@ _VARIASJON_PERSON = (
     "\n\nTO TING SOM BLE GLEMT SIST, og som teller like mye som teksten:"
     "\n1) LENGDE: 1200-1800 tegn i `body`. Ligger du under 1200, MANGLER det noe "
     "konkret, og løsningen er å VISE en ting til, ikke å utdype poenget."
-    "\n2) BILDE: sett `bildetype` på hvert utkast. Kan innlegget vise fram noe som "
-    "finnes som tekst, altså et utkast, en logglinje, en regel du skrev, så bruk "
-    "`utdrag` og legg de faktiske linjene i `utdrag.tekst`. Det er forskjellen på "
+    # `utdrag` sto her som anbefalingen lenge etter at schemaet sluttet å godta
+    # den for personmerker. Modellen fulgte teksten, valideringen avviste svaret,
+    # og hele genereringen ble kjørt en gang til (målt 29. september 2026).
+    "\n2) BILDE: sett `bildetype` på hvert utkast. Viser et skjermbilde i "
+    "BILDEKANDIDATER det innlegget handler om, bruk `bevis`. Det er forskjellen på "
     "å påstå noe og å vise det. Har du ingenting ekte å vise, sett `ingen`.")
 
 
@@ -1021,19 +1017,31 @@ def _variasjon_block(brand) -> str:
     return (_VARIASJON_PERSON if brand.voice_mode == "person" else _VARIASJON_MERKE)
 
 
-def _pilar_block(brand, coverage: dict) -> str:
-    """Lister pilarene med dekningstall og markerer de underdekte, så hjernen roterer
-    mot pilarer som har fått lite luft (innholdet følger strategien over tid)."""
+def _pilar_block(brand) -> str:
+    """Pilarene selv. De ligger fast, så de hører til i systemprompten."""
     if not brand.pillars:
         return "(ingen pilarer definert for dette merket; velg vinkel fritt)"
+    return ("Velg én pilar per utkast og sett `pillar` til id-en. Prioriter de underdekte "
+            "(se PILARDEKNING i brukermeldingen) så alle pilarene får luft over tid:\n"
+            + "\n".join(f"- {p.id} ({p.label}): {p.desc}" for p in brand.pillars))
+
+
+def _dekning_block(brand, coverage: dict) -> str:
+    """Dekningstallene, så hjernen roterer mot pilarer som har fått lite luft.
+
+    Står i brukermeldingen og ikke i systemprompten. Tallene teller de siste 24
+    utkastene, så de endrer seg etter HVER runde, og så lenge de lå i
+    systemprompten ble den aldri lik to ganger og cachen traff aldri mellom to
+    påfyll."""
+    if not brand.pillars:
+        return ""
     mn = min(coverage.get(p.id, 0) for p in brand.pillars)
     lines = []
     for p in brand.pillars:
         c = coverage.get(p.id, 0)
         mark = " (PRIORITER)" if c <= mn else ""
-        lines.append(f"- {p.id} ({p.label}): brukt {c}x{mark}. {p.desc}")
-    return ("Velg én pilar per utkast og sett `pillar` til id-en. Prioriter de underdekte "
-            "(lavt tall) så alle pilarene får luft over tid:\n" + "\n".join(lines))
+        lines.append(f"- {p.id}: brukt {c}x{mark}")
+    return "\n\nPILARDEKNING (lavt tall = prioriter):\n" + "\n".join(lines)
 
 
 def _normalize_pillars(posts: list[dict], brand) -> None:
@@ -1194,7 +1202,7 @@ def _cmd_run(args) -> int:
         strategi=(brand.strategi or "(ingen definert)")[:3000],
         innholdspreferanser=(brand.innholdspreferanser or "(ingen definert)")[:3000],
         produkter=(brand.produkter or "(ingen produktfakta)")[:3000],
-        pilarer=_pilar_block(brand, coverage),
+        pilarer=_pilar_block(brand),
     )
     user = ("FERSK KONTEKST (temaer/vinklinger, ikke til sitat):\n"
             + json.dumps(ctx, ensure_ascii=False)
@@ -1212,6 +1220,7 @@ def _cmd_run(args) -> int:
             + (bildebank.kandidat_blokk(vault) if brand.voice_mode == "person" else "")
             + (_media_block(brand) if brand.voice_mode != "person" else "")
             + slot_block
+            + _dekning_block(brand, coverage)
             + _variasjon_block(brand)
             + f"\n\nLag {n} utkast nå: unikt motiv per bilde, og en pilar (pillar-id) per utkast.")
     # Tida skalerer med antall utkast, og taket er satt etter to observerte
@@ -1220,7 +1229,8 @@ def _cmd_run(args) -> int:
     # kildekrav og karantene, så 120 s per stykk er ikke rundhåndet.
     tid = max(300, 120 * n)
     env = loop_model.structured_call(system, user, _post_schema(brand), label="generering",
-                                     timeout=tid)
+                                     timeout=tid,
+                                     **({"model": brand.text_model} if brand.text_model else {}))
     out = env.get("structured_output") or {}
     posts = out.get("posts") or []
     if not posts:

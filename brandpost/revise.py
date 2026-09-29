@@ -93,7 +93,8 @@ def revise_draft(draft: dict, note: str, *, brand_key: str = "") -> dict:
             + "\n\nSkriv om utkastet slik at tilbakemeldingene er innfridd. "
               "Behold det som ikke er påpekt.")
 
-    env = structured_call(system, user, _REVISE_SCHEMA, label="retting")
+    env = structured_call(system, user, _REVISE_SCHEMA, label="retting",
+                          **({"model": brand.text_model} if brand.text_model else {}))
     ut = env.get("structured_output") or {}
     if not ut.get("body"):
         raise ValueError("modellen ga ingen tekst tilbake")

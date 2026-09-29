@@ -187,7 +187,8 @@ def omskriv_slides(draft: dict, brand: Brand, *, rettelser: list[str] | None = N
     )
     env = loop_model.structured_call(
         _OMSKRIV_SYSTEM.format(name=brand.name, voice=bk.voice_guide(brand)[:2500]),
-        user, _OMSKRIV_SCHEMA, label="karusell-omskriv")
+        user, _OMSKRIV_SCHEMA, label="karusell-omskriv",
+        **({"model": brand.text_model} if brand.text_model else {}))
     # structured_call returnerer en KONVOLUTT; svaret ligger under "structured_output",
     # slik alle de andre kallstedene leser det (plan.py, cli.py, pulse.py). Sto feil
     # nøkkel her, og testen mocket det indre svaret, så feilen var usynlig: i drift ble

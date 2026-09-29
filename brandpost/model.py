@@ -14,7 +14,12 @@ for en fremmed som nettopp har klonet repoet.
 
 Modellen som brukes settes med BRANDPOST_MODEL. Fallbacken (BRANDPOST_MODEL_FALLBACK)
 MÅ være en annen modellfamilie enn primæren: er begge fra samme familie, har en
-overbelastning ingen fluktvei.
+overbelastning ingen fluktvei. Et merke kan skrive tekstene sine med en egen modell
+(`[model] text` i profile.toml); da er BRANDPOST_MODEL reserven hvis fallbacken er
+av samme familie som den.
+
+BRANDPOST_EFFORT (low|medium|high|xhigh|max) låser effort på kommandolinja. Tom
+betyr modellens standard, og den er ikke den samme for alle modellene.
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +70,27 @@ def fallback_name() -> str:
 def _family(m: str) -> str:
     """Grovt modellfamilie-navn, brukt for å hindre at primær og fallback er like."""
     return m.split("[")[0].removeprefix("claude-").split("-")[0]
+
+
+def _fallback_for(primaer: str) -> str:
+    """Første reserve fra en annen familie enn primæren, eller tom.
+
+    Fallbacken er satt med tanke på BRANDPOST_MODEL. Skriver et merke med en egen
+    modell fra samme familie som fallbacken (sonnet-5-5 mot sonnet-5), hadde en
+    overbelastning ingen fluktvei, så da er hovedmodellen reserven."""
+    for kandidat in (fallback_name(), model_name()):
+        if kandidat and _family(kandidat) != _family(primaer):
+            return kandidat
+    return ""
+
+
+_EFFORT = ("low", "medium", "high", "xhigh", "max")
+
+
+def effort() -> str:
+    """BRANDPOST_EFFORT, eller tom når den mangler eller er ukjent."""
+    e = (os.environ.get("BRANDPOST_EFFORT") or "").strip().lower()
+    return e if e in _EFFORT else ""
 
 
 def claude_bin() -> str:
@@ -214,21 +241,47 @@ def _cli_feilsammendrag(envelope: dict[str, object]) -> str:
     return _kort_feiltekst("; ".join(funn))
 
 
+def _modell_katalog() -> Path:
+    """Tom arbeidskatalog for tekstkallene.
+
+    Claude Code leser CLAUDE.md fra arbeidskatalogen og oppover. Startet fra et
+    oppsettsrepo fikk hver generering hele driftsnotatet der som instruksjon, oppå
+    sin egen systemprompt."""
+    p = Path(tempfile.gettempdir()) / "brandpost-modell"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _call_cli(system_prompt: str, user_message: str, schema: dict,
               model: str, timeout: int, images: list[str] | None = None) -> dict:
     cmd = [claude_bin(), "--print", "--model", model, "--output-format", "json",
-           "--json-schema", json.dumps(schema), "--append-system-prompt", system_prompt]
+           "--json-schema", json.dumps(schema)]
+    cwd = None
     if images:
         # Kommandolinja tar ikke bilder som argument, men Claude Code kan lese dem
         # selv. Stien i meldingen er derfor hele mekanismen, og den forutsetter at
         # Read er tillatt i kjøringen. Er den ikke det, kommer svaret uten å ha sett
         # bildet, og kalleren MÅ behandle det som en mislykket vurdering.
+        cmd += ["--append-system-prompt", system_prompt]
         stier = "\n".join(f"- {s}" for s in images)
         user_message = (f"Les disse bildefilene med Read-verktøyet før du svarer:\n"
                         f"{stier}\n\n{user_message}")
+    else:
+        # Rent tekstkall: vår prompt er HELE systemprompten, uten verktøy, MCP,
+        # skills eller CLAUDE.md. Med Claude Codes standardoppsett var to tredjedeler
+        # av hvert genereringskall kodeagent-prompt og verktøylister (46 600 tokens
+        # mot 20 000), og med Bash tilgjengelig brukte modellen ni runder på å lese
+        # vaulten med ls og cat før den skrev (målt 29. september 2026). Ett verktøy
+        # og en systemprompt som er lik fra runde til runde er også det som lar
+        # cachen treffe mellom påfyllene.
+        cmd += ["--system-prompt", system_prompt, "--tools", "",
+                "--strict-mcp-config", "--disable-slash-commands"]
+        cwd = str(_modell_katalog())
+    if effort():
+        cmd += ["--effort", effort()]
     try:
         r = subprocess.run(cmd, input=user_message, capture_output=True,
-                           text=True, timeout=timeout)
+                           text=True, timeout=timeout, cwd=cwd)
     except FileNotFoundError as e:
         raise OppsettFeil(
             "fant ikke `claude`. Installer Claude Code, eller la "
@@ -294,8 +347,8 @@ def structured_call(system_prompt: str, user_message: str, schema: dict,
     """
     primaer = model or model_name()
     stige = [primaer]
-    fb = fallback_name()
-    if fb and _family(fb) != _family(primaer):
+    fb = _fallback_for(primaer)
+    if fb:
         stige.append(fb)
 
     kall = _call_cli if backend() == "cli" else _call_api
