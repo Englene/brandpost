@@ -53,6 +53,32 @@ def linkedin_owns(draft: dict) -> bool:
     return bool((draft.get("scheduled_confirmed") or "").strip())
 
 
+_STI_FELT = ("png_path", "cover_path", "pdf_path")
+
+
+def lokale_stier(draft: dict, vault: Path | None) -> dict:
+    """Kopi av utkastet med bilde- og PDF-stier som finnes på DENNE maskinen.
+
+    Manifestet lagrer absolutte stier fra maskinen som laget innlegget. Planlegges
+    det på laptopen (/Users/mr.engelschion/...) og publiseres av jobben på Mini
+    (/Users/elling/...), finnes ikke stien, og publiseringen feilet med «fant ikke
+    bilde» til innlegget var for sent og ble hoppet over (fire innlegg 30. sep og
+    1. okt 2026). Fila ligger der likevel, i socials-mappa som synkes. Finnes ikke
+    den lagrede stien, slås den opp i denne maskinens socials-mappe; finnes den
+    ikke der heller, står stien urørt så feilmeldingen viser hva som manglet."""
+    ut = dict(draft)
+    rot: Path | None = None
+    for felt in _STI_FELT:
+        sti = str(ut.get(felt) or "")
+        if not sti or "/socials/" not in sti or Path(sti).exists():
+            continue
+        rot = rot or store.socials_dir(vault)
+        kandidat = rot / sti.rsplit("/socials/", 1)[1]
+        if kandidat.exists():
+            ut[felt] = str(kandidat)
+    return ut
+
+
 def _due_rows(vault: Path, now: datetime) -> list[dict]:
     out: list[dict] = []
     for mpath in sorted(store.socials_dir(vault).glob("*/manifest.json")):
@@ -280,6 +306,7 @@ def publiser_ett(mpath: Path, manifest: dict, idx: int, draft: dict, *,
         _brand = None
     if _brand is not None:
         brandkit.require_generation_ready(_brand)
+    draft = lokale_stier(draft, vault)
     res = dict(linkedin.publish_draft(draft, dry_run=dry_run))
     if not res.get("posted"):
         return res
