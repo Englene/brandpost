@@ -294,3 +294,32 @@ def test_slack_varsler_ikke_uten_ekte_linkedin_url(monkeypatch):
         r = publisher._publisert_slack(_draft(1), ekte)
         assert r.get("sent") is True, f"blokkerte ekte URL {ekte!r}"
     assert len(sendt) == 2
+
+
+def test_bildesti_fra_en_annen_maskin_finnes_lokalt(tmp_path, monkeypatch):
+    """Planlagt på laptopen, publisert på Mini: den lagrede stien har feil
+    hjemmemappe, men bildet ligger i socials-mappa her. Fire innlegg ble hoppet
+    over 30. sep og 1. okt 2026 fordi publisereren lette på laptop-stien."""
+    _manifest(tmp_path, [])
+    bilde = tmp_path / "socials" / "2026-07-23" / "post-1-demo.png"
+    bilde.write_bytes(b"png")
+    d = _draft(1)
+    d["png_path"] = "/Users/en-annen/Documents/Obsidian Vault/_system/socials/2026-07-23/post-1-demo.png"
+    _manifest(tmp_path, [d], day="2026-07-24")
+    sett = {}
+    monkeypatch.setattr(publisher.linkedin, "publish_draft",
+                        lambda d, dry_run=None: sett.update(png=d["png_path"])
+                        or {"posted": True, "url": "https://li/9"})
+    monkeypatch.setattr(publisher, "_publisert_epost", lambda d, url, **k: {"sent": True})
+    tall = publisher.publish_due(tmp_path, now=datetime(2026, 7, 23, 11, 0))
+    assert tall["publisert"] == 1
+    assert sett["png"] == str(bilde)
+
+
+def test_bildesti_som_finnes_eller_mangler_overalt_står_urørt(tmp_path):
+    finnes = tmp_path / "eget.png"
+    finnes.write_bytes(b"png")
+    mangler = "/Users/en-annen/Documents/Obsidian Vault/_system/socials/2026-07-23/borte.png"
+    ut = publisher.lokale_stier({"png_path": str(finnes), "cover_path": mangler}, tmp_path)
+    assert ut["png_path"] == str(finnes)
+    assert ut["cover_path"] == mangler
