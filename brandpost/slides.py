@@ -6,7 +6,7 @@ ordmerke, prikk-matrise, Fraunces-display. Returnerer PIL-Image (RGB) så
 carousel.py kan montere dem til én PDF.
 
   render_forside(slide, brand, total)      hook-tittel + swipe-hint (slide 1)
-  render_innhold(slide, brand, i, total)   nummer + heading + brødtekst + fremdrift
+  render_innhold(slide, brand, i, total)   nummer + heading + brødtekst + ikon + fremdrift
   render_cta(slide, brand)                 oppfordring + stor mark + ordmerke
 """
 
@@ -16,6 +16,7 @@ import os
 
 from PIL import Image, ImageDraw
 
+from . import spot
 from .brandkit import Brand
 from .render import (
     SIZE_PORTRAIT, _cover_resize, _draw_big_mark, _draw_dot_grid,
@@ -103,6 +104,49 @@ def _lim_inn_motiv(img: Image.Image, art: Image.Image) -> None:
     img.paste(band, (0, y0), maske.resize((w, band_h)))
 
 
+# Skisse-ikonet på innholds-slidene (15. september 2026). Logo-formen i hjørnet
+# fyller flaten, men sier ingenting om punktet; ikonet viser hva slidet handler
+# om. Ferdig rendret i merkets media/ikoner, så det koster fortsatt null
+# bildekall. Maksbredden er satt etter karusellene eieren pekte på: stort nok
+# til å være blikkfanget, lite nok til at typografien fortsatt leder.
+IKON_MAKS_FRAC = 0.32
+# Ikonets senter, som andel av høyden. Samme linje på hvert kort i serien.
+IKON_LINJE = 0.72
+
+
+def _tegn_ikon(img: Image.Image, brand: Brand, slide: dict, *, y_tekst: int) -> str | None:
+    """Tegn slidens ikon på tekstaksen, forankret til en fast optisk linje.
+
+    Tre valg, alle tatt etter å ha sett åtte slides ved siden av hverandre
+    (15. september 2026):
+
+    * VENSTRE MARGIN, ikke midtstilt. Ordmerket, nummeret, overskriften og
+      brødteksten deler én venstrekant; et midtstilt ikon lager en andre akse
+      som ingenting annet på kortet følger.
+    * FAST LINJE (IKON_LINJE), ikke midt i restplassen. Sentrering i det som er
+      igjen flytter ikonet opp og ned etter hvor lang brødteksten er, og en
+      swipe gjennom serien blir hoppende. Ikonet viker bare når teksten faktisk
+      krever plassen.
+    * MINDRE enn før. På 0,40 av bredden slo tannhjulet overskriften i
+      blikkfang, og kortet handlet om ikonet i stedet for om setningen.
+    """
+    navn = spot.velg_ikon(slide)
+    ikon = spot.last_ikon(navn, brand) if navn else None
+    if ikon is None:
+        return None
+    w, h = img.size
+    side = int(w * IKON_MAKS_FRAC)
+    f = side / max(ikon.width, ikon.height)
+    ny = (max(1, round(ikon.width * f)), max(1, round(ikon.height * f)))
+    topp_grense = y_tekst + int(h * 0.02)          # luft under brødteksten
+    bunn_grense = h - int(h * 0.105) - ny[1]       # luft over fremdrifts-prikkene
+    if bunn_grense < topp_grense:                  # lang tekst: heller intet ikon
+        return None
+    y = min(max(int(h * IKON_LINJE) - ny[1] // 2, topp_grense), bunn_grense)
+    skalert = ikon.resize(ny, Image.LANCZOS)
+    img.paste(skalert, (int(w * 0.082), y), skalert)
+    return navn
+
 def render_forside(slide: dict, brand: Brand, total: int,
                    *, art: Image.Image | None = None,
                    skin: dict | None = None) -> Image.Image:
@@ -165,8 +209,9 @@ def render_innhold(slide: dict, brand: Brand, *, pos: int, total: int,
     # hjørne per slide. Deterministisk Pillow, aldri et bildekall per slide:
     # åtte genererte bilder leser som åtte ulike serier og koster 7-10x.
     # Tegnes FØR teksten, så brødteksten alltid ligger over.
-    _draw_logo_corners(img, brand, alpha=0.45,
-                       corners=(("br" if pos % 2 else "bl", 0.48),))
+    # Alltid nede til HØYRE: ikonet bor på venstre margin, og før dette vekslet
+    # formen inn under ikonet annenhver slide og lagde grøt av begge.
+    _draw_logo_corners(img, brand, alpha=0.45, corners=(("br", 0.48),))
     _draw_dot_grid(img, _pcol(pal, skin["dots"]), cols=5, rows=3)
     _draw_wordmark(img, brand, margin, int(h * 0.07), int(w * 0.044),
                    text_rgb=_hex(pal.headline))
@@ -196,7 +241,8 @@ def render_innhold(slide: dict, brand: Brand, *, pos: int, total: int,
     body = (slide.get("body") or "").strip()
     if body:
         bf = _load_font(brand.body_font, int(w * 0.034))
-        _draw_body(draw, body, bf, margin, y, int(w * 0.80), _hex(pal.ink))
+        y = _draw_body(draw, body, bf, margin, y, int(w * 0.80), _hex(pal.ink))
+    _tegn_ikon(img, brand, slide, y_tekst=y)
     _progress(img, brand, pos, total, skin)
     return img.convert("RGB")
 

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import brandkit, render, slides
+from . import brandkit, render, slides, spot
 from .brandkit import Brand
 
 
@@ -148,6 +148,7 @@ _OMSKRIV_SCHEMA = {
                     "kicker": {"type": "string"},
                     "heading": {"type": "string"},
                     "body": {"type": "string"},
+                    "ikon": {"type": "string", "enum": list(spot.IKONER)},
                 },
                 "required": ["kind", "heading"],
             },
@@ -160,9 +161,11 @@ _OMSKRIV_SYSTEM = (
     "Du skriver om en LinkedIn-karusell for {name}. Behold antall slides og samme "
     "rekkefølge av typer (forside, innhold, cta), men skriv teksten på nytt så den blir "
     "skarpere. Slidene leses på to sekunder hver: korte overskrifter, få ord i brødteksten. "
+    "Hver innholds-slide skal ha `ikon`, et håndtegnet skisse-ikon som viser hva punktet "
+    "handler om, valgt blant: {ikoner}. Ikke samme ikon to ganger. "
     "Skriv naturlig norsk bokmål. ALDRI tankestrek, bruk komma, kolon eller punktum.\n\n"
     "MERKESTEMME:\n{voice}"
-)
+).replace("{ikoner}", ", ".join(spot.IKONER))
 
 
 def omskriv_slides(draft: dict, brand: Brand, *, rettelser: list[str] | None = None) -> dict:
