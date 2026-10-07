@@ -52,13 +52,20 @@ def load_state(vault: Path | None = None) -> dict:
 
 
 def recent_angles(vault: Path | None = None, n: int = 14) -> list[dict]:
-    """De n siste (format, headline, motif, pillar, concept)-radene: mates til runbooken
-    for å unngå gjentak av BÅDE vinkel, visuelt motiv og stil-arketype."""
+    """De n siste radene: mates til runbooken for å unngå gjentak av BÅDE vinkel,
+    visuelt motiv og stil-arketype.
+
+    `brand` og `emne` er med fordi lista er PÅ TVERS av merker. Uten merkenavnet
+    kunne modellen ikke se at raden over kom fra nabomerket, og 15. september
+    2026 publiserte to merker samme dag hver sin karusell med samme grep og tre
+    av de samme punktene. Emne-karantenen er per merke med vilje
+    (blocked_topics), så dette er synlighet, ikke en ny sperre."""
     posts = load_state(vault).get("posts", [])
     return [
-        {"format": p.get("format"), "headline": p.get("headline"),
-         "motif": p.get("motif", ""), "pillar": p.get("pillar", ""),
-         "concept": p.get("concept", "")}
+        {"brand": p.get("brand", ""), "format": p.get("format"),
+         "headline": p.get("headline"), "motif": p.get("motif", "")[:140],
+         "pillar": p.get("pillar", ""), "concept": p.get("concept", ""),
+         "emne": p.get("emne", "")}
         for p in posts[-n:]
     ]
 

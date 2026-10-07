@@ -28,7 +28,7 @@ from pathlib import Path
 from . import (bildebank, bildevalg, brandkit, carousel as carouselmod,
                context as ctxmod, email as emailmod, model, paths,
                plan as planmod, prompts as promptsmod, publisher as pubmod,
-               render as rendermod, store)
+               render as rendermod, spot, store)
 
 # Repo-rotens .env (nøkler og BRANDPOST_*-innstillinger). Eksplisitt sti så
 # routinen finner den uansett arbeidskatalog.
@@ -454,6 +454,10 @@ _SLIDE_SCHEMA = {
         "heading": {"type": "string"},
         "body": {"type": "string"},
         "number": {"type": "integer"},
+        # Håndtegnet skisse-ikon på innholds-slidene (tegnet i meetingnotes/tegn,
+        # ferdig rendret i merkets media/ikoner, null bildekall). Treffer modellen
+        # ikke, finner spot.velg_ikon ett fra teksten.
+        "ikon": {"type": "string", "enum": list(spot.IKONER)},
     },
     "required": ["kind", "heading"],
 }
@@ -564,6 +568,10 @@ FORMATER:
   Motoren teller innholds-slidene og hopper over forside og cta. Lover tittelen
   «fem formuleringer», skal første formulering vise 1, ikke 2 fordi den ligger på
   slide to.
+  Hver innholds-slide SKAL ha `ikon`: ett håndtegnet skisse-ikon som viser hva punktet
+  handler om. Velg blant: {ikoner}. Velg det som faktisk illustrerer poenget, ikke det
+  samme to ganger i samme karusell, og la heller et slide stå uten enn å tvinge inn ett
+  som ikke passer.
 
 Alle: `body` (LinkedIn-teksten), `why_now` (én setning), `pillar` (id fra pilarene under),
 `kilder` (se KILDEKRAV). orientation default 'staaende'. Se «SISTE MOTIVER» og ikke gjenta
@@ -625,6 +633,11 @@ ikke engang stemte med kronetallet. Eieren fant det. Ikke gjenta det.
 ═══ INNHOLDSPILARER ═══
 {pilarer}
 """
+
+# Ikonnavnene er ikke en format-nøkkel: de er de samme for alle kjøringer, og en
+# ekstra nøkkel ville tvunget hvert kallsted (og hver test som bygger prompten)
+# til å kjenne den.
+_RUN_SYSTEM = _RUN_SYSTEM.replace("{ikoner}", ", ".join(spot.IKONER))
 
 
 # ── merke eller menneske ─────────────────────────────────────────────────────
@@ -1066,6 +1079,32 @@ def _slipp_bunkelaas(vault) -> None:
         pass
 
 
+def _ute_block(angles: list[dict], brand_key: str) -> str:
+    """ALLEREDE UTE, delt i eget merke og nabomerkene.
+
+    Naboene står for seg med en egen regel: samme eier driver flere merker om
+    samme fagfelt, og de deler mye av publikum. Temaet er fortsatt ledig (emne-
+    karantenen er per merke med vilje), men GREPET og punktene kan ikke gå igjen.
+    Uten dette skillet så modellen bare en udifferensiert liste og leverte 15.
+    september 2026 to karuseller med samme grep og samme punkter samme dag, på
+    hvert sitt merke."""
+    egne = [a for a in angles if (a.get("brand") or "") == brand_key]
+    andres = [a for a in angles if (a.get("brand") or "") not in ("", brand_key)]
+    ut = ("\n\nALLEREDE UTE FOR DETTE MERKET (publisert eller planlagt) - IKKE gjenta "
+          "motiv eller headline fra disse. Alt annet er ledig, også vinkler som har "
+          "vært foreslått før uten å bli publisert:\n"
+          + json.dumps(egne, ensure_ascii=False))
+    if andres:
+        ut += ("\n\nNABOMERKENE VÅRE la nettopp ut dette. Samme eier står bak, og "
+               "publikum overlapper. Temaet er ikke sperret, men FORMEN og POENGENE "
+               "er brukt opp: ikke lag en karusell med samme grep (liste av sitater, "
+               "samme antall punkter, samme oppbygning), ikke gjenbruk de samme "
+               "eksemplene med andre ord, og ikke skriv den samme «hvorfor nå». "
+               "Finn en annen inngang til stoffet:\n"
+               + json.dumps(andres, ensure_ascii=False))
+    return ut
+
+
 def _emne_block(sperret: dict) -> str:
     """Karantene-blokka i brukermeldingen. Tom når ingenting er sperret."""
     hard, soft = sperret.get("hard") or [], sperret.get("soft") or []
@@ -1206,10 +1245,7 @@ def _cmd_run(args) -> int:
     )
     user = ("FERSK KONTEKST (temaer/vinklinger, ikke til sitat):\n"
             + json.dumps(ctx, ensure_ascii=False)
-            + "\n\nALLEREDE UTE (publisert eller planlagt) - IKKE gjenta motiv eller "
-              "headline fra disse. Alt annet er ledig, også vinkler som har vært "
-              "foreslått før uten å bli publisert:\n"
-            + json.dumps(angles, ensure_ascii=False)
+            + _ute_block(angles, brand.key)
             + _emne_block(sperret)
             + _avvist_block(store.rejected_recently(vault, brand_key=brand.key))
             + ("\n\nLÆRDOMMER (hva som har funket, bruk det):\n" + lessons if lessons else "")
