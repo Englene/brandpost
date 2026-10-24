@@ -32,7 +32,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_FALLBACK = "claude-haiku-4-5-20251001"
 DEFAULT_MAX_TOKENS = 8000
 
